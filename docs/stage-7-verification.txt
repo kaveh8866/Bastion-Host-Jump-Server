@@ -1,0 +1,166 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 7 — Security Audit, README Documentation & Cost Estimation
+Audit transcript
+Date: 2026-11-17
+Repository: https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+================================================================================
+
+RESULT
+------
+Stage 7 is COMPLETE as a documentation, security-audit and cost-estimation
+stage. No live OCI compute host exists: Stage 5 was blocked by capacity/quota
+and Stage 6 destroyed the network resources. No production certification is
+claimed.
+
+--------------------------------------------------------------------------------
+1. ZERO-LEAK SECURITY AUDIT
+--------------------------------------------------------------------------------
+Tracked Git surface after adding this transcript:
+
+  $ git ls-files | wc -l
+  44
+
+Forbidden tracked-path scan:
+
+  $ git ls-files | grep -Ei '(^|/)(\.env$|\.env\.[^e]|.*\.pem$|.*\.key$|
+      .*\.p12$|.*\.pfx$|id_rsa|id_ed25519|.*\.tfstate|.*\.db$|.*\.sqlite|
+      runtime/|sessions\.jsonl|host_keys|authorized_keys)'
+  (no output)
+
+Tracked templates are intentional placeholders:
+
+  .env.example
+  terraform/terraform.tfvars.example
+
+Gitignore checks:
+
+  $ git check-ignore -v .env
+  .gitignore:9:.env                    .env
+
+  $ git check-ignore -v terraform/terraform.tfvars
+  .gitignore:52:*.tfvars              terraform/terraform.tfvars
+
+  $ git check-ignore -v terraform/terraform.tfstate
+  .gitignore:50:*.tfstate             terraform/terraform.tfstate
+
+  $ git check-ignore -v runtime/host_keys/ssh_host_ed25519_key
+  .gitignore:33:runtime/              runtime/host_keys/ssh_host_ed25519_key
+
+  $ git check-ignore -v runtime/audit/sessions.jsonl
+  .gitignore:33:runtime/              runtime/audit/sessions.jsonl
+
+  $ git check-ignore -v id_rsa foo.pem
+  .gitignore:16:id_rsa*               id_rsa
+  .gitignore:10:*.pem                 foo.pem
+
+Private-key header scan:
+
+  $ git grep -n -- '-----BEGIN' -- .
+  (no output)
+
+The only Stage 4 grep hits for the words PRIVATE KEY are the literal audit
+commands recorded as evidence; they contain no key material.
+
+Workspace result: no tracked private SSH key, host key, authorized key, audit
+database/JSONL, tfstate, `.env`, PEM/PPK or state backup. The `.gitignore`
+patterns are active and the placeholder templates are correctly trackable.
+
+--------------------------------------------------------------------------------
+2. README DOCUMENTATION
+--------------------------------------------------------------------------------
+The README was rewritten with:
+
+  - Alpine/OpenSSH/Docker/OpenTofu/Stage 7/MIT badges;
+  - overview, feature and security-control tables;
+  - the required ASCII secure-proxy workflow:
+      [Authorized Operators / Admins]
+        -> encrypted key-based SSH
+        -> [Hardened Bastion Host / Jump Server]
+        -> [Internal / Private Network & Subnet Resources];
+  - SSH ingress policy, authorized-key lifecycle and rotation;
+  - JSONL audit inspection commands and fail-closed behavior;
+  - OpenTofu/OCI deployment contract and the recorded Stage 5 blocker;
+  - Cloud-Agnostic portability note and AWS/GCP migration tips;
+  - cross-cloud cost table and pricing references;
+  - stage/evidence table, honest limits and license.
+
+Formatting check:
+
+  README.md: balanced fenced blocks, no tabs, no trailing whitespace
+  Required headings/phrases:
+    "Secure proxy workflow"                         present
+    "Cloud-Agnostic Portability Note"               present
+    "Cross-Cloud Cost & Benchmark Estimation"       present
+    "final production verification"                 present
+    "[Authorized Operators / Admins]"               present
+    "[Internal / Private Network & Subnet Resources]" present
+  Internal links checked against the repository; no broken local links.
+
+Certification wording is deliberately qualified: the README states the
+OCI-only verification/certification policy, then explicitly records that no
+live host or completed production certification exists because Stage 5 was
+blocked.
+
+--------------------------------------------------------------------------------
+3. CROSS-CLOUD COST ESTIMATION
+--------------------------------------------------------------------------------
+The cost table uses the configured project footprint (1 vCPU, 6 GB RAM, 50 GB
+boot disk, SSH-only network) and the closest free-tier equivalent. It is a
+list-price estimate, not a measured benchmark.
+
+Reviewed inputs (2026-11-17):
+
+  OCI Always Free  1,500 A1 OCPU-hours / 9,000 GB-hours per month
+                   (about 2 OCPU / 12 GB), 200 GB block storage,
+                   10 TB outbound/month; US$300/30-day trial separate.
+  AWS              t3.micro $0.0104/hour, 50 GB gp3 $0.08/GB-month,
+                   100 GB/month free internet egress,
+                   then $0.09/GB first tier.
+  GCP              e2-micro approximately $6.11/month in us-central1;
+                   free tier includes 1 e2-micro, 30 GB standard PD,
+                   1 GB North American egress in us-west1/us-central1/us-east1;
+                   paid egress about $0.12/GiB Premium tier.
+
+Derived estimates in README:
+
+  OCI Always Free  $0
+  OCI Trial        $0 incremental within credit
+  AWS              about $11.59/month (compute + 50 GB gp3) before excess egress
+  GCP              $0 eligible free tier; about $6.11/month paid compute plus disk/egress
+
+Pricing references are linked in the README. Exclusions: tax, snapshots,
+backups, public IPv4, monitoring, support, hosted workloads and region
+differences.
+
+No compute instance was created in OCI, so the table is explicitly labelled as
+an estimate rather than a live benchmark.
+
+--------------------------------------------------------------------------------
+4. CLOUD / LIVE STATUS
+--------------------------------------------------------------------------------
+Stage 5: network created; A1 capacity exhausted in all ADs; E2.1.Micro
+LimitExceeded in two ADs; no instance/public IP.
+Stage 6: five network resources destroyed; state empty; project-named OCI
+inventory zero.
+Stage 7: no cloud operation; documentation/audit only.
+
+There is no public IP, remote container, live SSH session or packet-level OCI
+firewall test to report. The Stage 5 and Stage 6 transcripts are the source of
+truth.
+
+--------------------------------------------------------------------------------
+5. GIT BOUNDARY / COMMIT
+--------------------------------------------------------------------------------
+No `.env`, state, plan log, private key, runtime audit or host key is staged.
+The documentation commit is:
+
+  docs: add comprehensive README, security audit sign-off, and cross-cloud cost breakdown for bastion host / jump server
+
+The working tree is clean after the commit.
+
+================================================================================
+STAGE 7 RESULT: COMPLETE
+Zero-leak audit passed; README and cost model published; no false live or
+production-certification claim.
+================================================================================
