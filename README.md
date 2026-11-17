@@ -3,7 +3,7 @@
 ![Alpine](https://img.shields.io/badge/base-Alpine%203.23-0D597F?logo=alpine-linux&logoColor=white)
 ![OpenSSH](https://img.shields.io/badge/access-public--key%20only-4E9A06)
 ![Docker](https://img.shields.io/badge/Docker-read--only%20%2B%20cap__drop%20ALL-2496ED?logo=docker&logoColor=white)
-![Stage](https://img.shields.io/badge/stage-1%20%C2%B7%20scaffolded-blue)
+![Stage](https://img.shields.io/badge/stage-3%20%C2%B7%20documented-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A small, hardened SSH jump host for reaching private cloud resources without
@@ -11,11 +11,11 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to the private subnet; password auth, root
 login, SFTP and reverse tunnels are disabled.
 
-**Stage 2 status:** the OpenTofu OCI network and compute contract is complete
-and `tofu validate` passes. Stage 1's container remains locally verified:
-healthy, key-only login works, and every interactive command is written to a
-JSONL audit trail. No OCI resource has been created or applied; live plan/apply
-belongs to Stage 3, and TLS proxying is a later stage.
+**Stage 3 status:** the agent playbook and operator prerequisites are complete,
+the OpenTofu OCI network/compute contract validates, and Stage 1's container
+remains locally verified (healthy, key-only login, JSONL command audit). No OCI
+resource has been created or applied; live plan/apply belongs to Stage 4, and
+TLS proxying is later. Certification is scoped strictly to OCI trial credits.
 
 ---
 
@@ -114,6 +114,23 @@ AWS/GCP mapping notes are in the module comments and the Terraform README.
 
 ---
 
+## Agent and operator documentation (Stage 3)
+
+- [`AGENT_GUIDE.md`](AGENT_GUIDE.md) — execution playbook for AI coding agents:
+  local bring-up, key lifecycle, firewall checks, audit queries, active-session
+  inspection, negative auth tests, troubleshooting and change discipline.
+- [`MANUAL_PREREQS.md`](MANUAL_PREREQS.md) — the human operator's pre-deployment
+  checklist: OCI API profile, SSH key, management `/32`, `.env`, Terraform
+  inputs, local smoke test, deployment-day sequence and teardown.
+
+Both state the same certification boundary: the container and IaC are
+cloud-agnostic with AWS/GCP mappings, but **final production verification and
+testing certification are performed strictly on OCI using trial credits**.
+AWS and GCP are ports, not certified targets. Stage 3 itself is documentation
+and local validation; no live deployment is claimed.
+
+---
+
 ## Access policy
 
 `bastion/access/whitelist.example.json` describes the administrative identity,
@@ -152,6 +169,8 @@ layer in a later stage can consume the same schema for per-target enforcement.
 │   ├── whitelist.schema.json   JSON Schema draft 2020-12
 │   └── README.md
 ├── terraform/                  OpenTofu OCI VCN, security list and compute modules
+├── AGENT_GUIDE.md              AI agent execution playbook (Stage 3)
+├── MANUAL_PREREQS.md           operator pre-deployment checklist (Stage 3)
 ├── docs/                       stage evidence
 ├── .env.example                placeholders only
 ├── .gitignore                  strict zero-leak boundary
@@ -216,19 +235,20 @@ Raw transcript: [`docs/stage-1-verification.txt`](docs/stage-1-verification.txt)
 | --- | --- | --- |
 | 1 | Scaffold, container, SSH/audit policy, zero-leak boundary, local verification | ✅ complete |
 | 2 | OpenTofu OCI VCN, security list, compute and bastion host | ✅ validated |
-| 3 | Live deployment on OCI, host bootstrap, real jump/audit test | not started |
-| 4 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
-| 5 | Packaging, agent/operator guides, cost model, zero-leak audit | not started |
-| 6 | Teardown, provider verification, CloudGuard certification | not started |
+| 3 | Agent playbook, operator prerequisites, OCI certification scope | ✅ complete |
+| 4 | Live OCI deployment, host bootstrap, real jump/audit test | not started |
+| 5 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
+| 6 | Packaging, cost model, zero-leak audit | not started |
+| 7 | Teardown, provider verification, CloudGuard certification | not started |
 
-CloudGuard vault status after Stage 1: **indexed** — `PORTABLE_CERTIFIED`
-remains pending the later verification stages.
+CloudGuard vault status after Stage 3: **indexed**, `has_iac=1` —
+`PORTABLE_CERTIFIED` remains pending the later verification stages.
 
 ---
 
 ## Honest limits
 
-- Stages 1–2 are local only. Nothing in this repository creates or verifies a
+- Stages 1–3 are local only. Nothing in this repository creates or verifies a
   cloud resource, and no live deployment is claimed; `tofu validate` proves the
   configuration, not a host.
 - sshd must run as the root master; the container narrows capabilities but does

@@ -1,0 +1,151 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 3 — Agent Guide & Manual Prerequisites
+Evidence transcript
+Date: 2026-11-17
+Repository: https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+Branch: main (local; remote not yet updated)
+================================================================================
+
+DELIVERABLES
+------------
+AGENT_GUIDE.md      392 lines, 12 top-level sections
+MANUAL_PREREQS.md   359 lines, 12 top-level sections
+docs/stage-3-verification.txt  this transcript
+
+Both guides live at the repository root, where CloudGuard's portability and
+documentation audit expects the pair README.md + AGENT_GUIDE.md.
+
+--------------------------------------------------------------------------------
+1. AGENT_GUIDE.md — content map
+--------------------------------------------------------------------------------
+  0  Non-negotiables: private material, Git boundary, loopback default,
+     deployment-stage separation, no security shortcuts, honest reporting
+  1  Repository map, ports/image/account, host SSH 22 vs container 2222
+  2  Prerequisites: Docker 24+, Compose v2, OpenSSH, workspace OpenTofu path
+  3  Fast path: key generation, key staging, .env, build, health, key-only login
+  4  Authorized key lifecycle: rotate, restart, inspect staged tmpfs keys
+  5  Firewall/network: loopback PortBindings, OCI single TCP/22 ingress,
+     explicit egress inventory, host listener checks
+  6  Session audit: host/container JSONL queries, expected record, fail-closed
+     behavior, Docker NAT source limitation, -W forwarding caveat
+  7  Security logs and active connections: docker logs filters, docker top,
+     host ss / PowerShell, health and restart inspection
+  8  Verification commands: compose config/build, shell syntax, sshd -T,
+     negative password/root tests, whitelist validator, tofu fmt/validate
+  9  Troubleshooting: nine concrete symptom/cause/fix rows
+ 10  Change discipline: smallest change, checks, Git boundary, evidence, commit
+ 11  Certification scope: cloud-agnostic ports, OCI-only trial certification,
+     no live claim at Stage 3, list of what local verification covers
+
+Every command is written to run from the repository root; host-specific paths
+are called out. No command in the guide was presented as cloud-verified.
+
+--------------------------------------------------------------------------------
+2. MANUAL_PREREQS.md — content map
+--------------------------------------------------------------------------------
+  Phase 0  Decisions: region, compartment, A1/E2 shape, allowed /32, listener
+           posture, audit retention, budget alert
+  Phase 1  Workstation tools with verification commands and Windows notes
+  Phase 2  OCI account, API signing key, ~/.oci/config, IAM scope, budget
+  Phase 3  Administrator ed25519 key, public-key handling, management CIDR
+  Phase 4  Clone/publication note, runtime dirs, .env mode 600, variable table,
+           public key mode 0644, Git-boundary checks
+  Phase 5  Terraform inputs: OCIDs, region, CIDR, public key content, shape,
+           fmt/validate, expected six-resource graph, no apply
+  Phase 6  Local pre-cloud smoke test: healthy container, key-only login,
+           password/root refusal, audit record, clean Git status
+  Phase 7  Pre-deployment checklist: credentials, key, CIDR, ignored files,
+           validation, smoke test, perimeter review, teardown plan
+  Phase 8  Deployment-day sequence (documented only; not executed): plan,
+           apply, cloud-init, host SSH, compose, post-deploy checks
+  Phase 9  Teardown only on explicit request: compose down, plan -destroy,
+           destroy, state and provider verification
+  +        Troubleshooting table and certification scope
+
+The publication note is deliberate: Stages 1–3 are local commits and the remote
+still has only its initial commit. The clone command becomes valid after the
+release stage pushes main; until then the local workspace path applies.
+
+--------------------------------------------------------------------------------
+3. FORMATTING CHECKS
+--------------------------------------------------------------------------------
+$ python (fence parity, headings, required phrases, referenced paths)
+
+  AGENT_GUIDE.md: lines=392 fences=40 balanced=True h2=12
+  MANUAL_PREREQS.md: lines=359 fences=24 balanced=True h2=12
+
+  Required phrases present in both:
+    "Oracle Cloud Infrastructure"        True
+    "trial credits"                      True
+    "AWS"                                True
+    "GCP"                                True
+    "cloud-agnostic"                     True
+    "Cloud-Agnostic"                     True
+    "final production verification"      True
+
+  Referenced repository paths checked:
+    docker/docker-compose.yml            exists
+    docker/entrypoint.sh                 exists
+    docker/sshd_config                   exists
+    bastion/session-audit.sh             exists
+    bastion/access/validate-whitelist.sh exists
+    terraform/README.md                  exists
+    .env.example                         exists
+    runtime/                             exists (ignored)
+    docs/stage-1-verification.txt        exists
+
+  No tabs, no trailing whitespace, and no unbalanced inline backticks were
+  reported by the formatting check.
+
+--------------------------------------------------------------------------------
+4. CONSISTENCY CORRECTIONS FOUND DURING REVIEW
+--------------------------------------------------------------------------------
+- .env.example previously told the operator to chmod the authorized public key
+  0600. The entrypoint stages keys as root:root 0644 because sshd's
+  privilege-separated child must read them without DAC_OVERRIDE. The template
+  comment now says 0644, matching README, AGENT_GUIDE and MANUAL_PREREQS.
+- README.md still labelled Stage 3 as live deployment. The roadmap now treats
+  Stage 3 as documentation, Stage 4 as live deployment, and later stages as
+  proxy/packaging/teardown.
+- MANUAL_PREREQS.md now lists BASTION_ADMIN_PUBLIC_KEY_PATH alongside the
+  informational BASTION_ADMIN_PUBLIC_KEY placeholder.
+
+--------------------------------------------------------------------------------
+5. ZERO-LEAK CHECK
+--------------------------------------------------------------------------------
+$ git check-ignore -v .env runtime/host_keys runtime/audit terraform/terraform.tfvars
+  .env                                  ignored
+  runtime/host_keys                     ignored
+  runtime/audit                         ignored
+  terraform/terraform.tfvars            ignored
+
+$ git status --porcelain
+  only the intended docs, README and .env.example edits are listed
+
+The guides contain no private key block, no PEM block, no real OCID and no
+provider credential. Public key placeholders are explicitly marked invalid and
+documentation-range CIDRs use RFC 5737 addresses. No .env, host key, audit
+record, tfvars or state file is staged.
+
+--------------------------------------------------------------------------------
+6. CERTIFICATION SCOPE STATEMENT
+--------------------------------------------------------------------------------
+Both documents state, in their own sections, that:
+
+- the container and IaC are cloud-agnostic with AWS and GCP mappings documented;
+- final production verification and testing certification are performed
+  strictly on Oracle Cloud Infrastructure using trial credits;
+- AWS and GCP are ports, not certified targets;
+- no deployment is claimed until the deployment stage records live evidence.
+  Stage 3 is documentation plus locally validated Stage 1/2 artifacts; no OCI
+  plan, apply, destroy or live jump has executed.
+
+This transcript intentionally does not convert the scope statement into a false
+claim of completed production certification.
+
+================================================================================
+STAGE 3 RESULT: COMPLETE
+Guides present, formatted, cross-linked from README, consistent with the
+container and IaC, and explicit that live OCI certification is pending.
+================================================================================
