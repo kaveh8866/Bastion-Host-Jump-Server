@@ -4,7 +4,7 @@
 ![OpenSSH](https://img.shields.io/badge/access-public--key%20only-4E9A06)
 ![Docker](https://img.shields.io/badge/Docker-read--only%20%2B%20cap__drop%20ALL-2496ED?logo=docker&logoColor=white)
 ![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?logo=opentofu&logoColor=white)
-![Stage](https://img.shields.io/badge/stage-7%20%C2%B7%20audited%20%26%20documented-blue)
+![Stage](https://img.shields.io/badge/stage-8%20%C2%B7%20v1.0.0%20release-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A small, hardened SSH jump host for reaching private cloud resources without
@@ -12,10 +12,12 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to private hosts; password authentication,
 root login, SFTP, agent forwarding and reverse tunnels are disabled.
 
-**Stage 7 status:** security audit, README and cross-cloud cost model complete.
-Stage 5's live OCI compute deployment remains blocked by capacity/quota, so
-there is no public IP, live host or production certification. Local Stage 4
-verification and the Stage 6 teardown evidence remain valid.
+**Stage 8 status — v1.0.0 repository release:** the independent Git repository
+is on `main`, the remote is configured, the MIT license is present, and the
+release is tagged `v1.0.0`. Stage 5's live OCI compute deployment remains
+blocked by capacity/quota, so there is no public IP, live host or production
+certification. Local Stage 4 verification and the Stage 6 teardown evidence
+remain valid; certification is not awarded by this release.
 
 ---
 
@@ -409,6 +411,7 @@ allowance in the provider calculator before budgeting.
 | 5 | Live OCI deployment | ⚠️ blocked — capacity/quota | `docs/stage-5-verification.txt` |
 | 6 | Teardown and zero-resource verification | ✅ complete | `docs/stage-6-verification.txt` |
 | 7 | Security audit, README and cost model | ✅ complete | `docs/stage-7-verification.txt` |
+| 8 | Git finalization, MIT license, release commit, push and `v1.0.0` | ✅ packaged | origin/`main` + tag |
 
 Local Stage 4 results: valid key login succeeded; missing, invalid and root
 attempts returned SSH exit `255`; a disposable target was reached through an
@@ -421,6 +424,22 @@ state and zero project-named resources.
 
 CloudGuard vault: **indexed**, `has_iac=1`; `PORTABLE_CERTIFIED` remains pending
 a successful live verification.
+
+---
+
+## Release v1.0.0
+
+| Item | Value |
+| --- | --- |
+| Repository | <https://github.com/kaveh8866/Bastion-Host-Jump-Server> |
+| Branch | `main` |
+| License | MIT — Copyright (c) 2026 Mostafa Kaveh |
+| Tag | `v1.0.0` |
+| Certification | **Not awarded** — Stage 5 live compute was blocked before any host existed |
+
+The tag is a code/documentation release of a locally verified and audited
+project. It is not a claim that a live OCI bastion host or production
+certification exists.
 
 ---
 
