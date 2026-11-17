@@ -14,10 +14,10 @@ root login, SFTP, agent forwarding and reverse tunnels are disabled.
 
 **Stage 8 status — v1.0.0 repository release:** the independent Git repository
 is on `main`, the remote is configured, the MIT license is present, and the
-release is tagged `v1.0.0`. Stage 5's live OCI compute deployment remains
-blocked by capacity/quota, so there is no public IP, live host or production
-certification. Local Stage 4 verification and the Stage 6 teardown evidence
-remain valid; certification is not awarded by this release.
+release is tagged `v1.0.0`. The Stage 5 retry on 2026-11-17 successfully created
+the OCI host and completed live SSH, audit, jump and port-restriction checks.
+Local Stage 4 verification and the Stage 6 teardown of the earlier attempt
+remain valid; the final CloudGuard vault audit is recorded below.
 
 ---
 
@@ -239,15 +239,27 @@ tofu plan
 outputs are `instance_public_ip`, `instance_private_ip`, `instance_id` and the
 network identifiers.
 
-**Stage 5 result:** network resources were created, but compute was blocked:
+**Stage 5 live retry — succeeded on 2026-11-17:** A1.Flex capacity became
+available in `jiTx:EU-FRANKFURT-1-AD-1`. A saved plan created all six resources;
+cloud-init completed and the remote Docker stack became healthy.
 
-| Attempt | Result |
+| Check | Result |
 | --- | --- |
-| A1.Flex AD-1/2/3 | `500-InternalError, Out of host capacity` |
-| E2.1.Micro AD-1/2 | `400-LimitExceeded, The limit for this tenancy has been exceeded` |
+| Instance | `VM.Standard.A1.Flex`, 1 OCPU / 6 GB, AD-1 |
+| Public / private IP | `132.145.249.219` / `10.8.1.34` |
+| Host bootstrap | `cloud-init status --wait` → `done`; Docker 29.1.3 active |
+| Container | `cg-bastion` healthy; `127.0.0.1:2222->2222/tcp` |
+| Authentication | valid key `0`; missing/password, invalid key and root all `255` |
+| Audit | live JSONL record written for the command session |
+| Jump | disposable target reached through the bastion; `stage5-jump-ok` |
+| Port restriction | target port 23 rejected: `administratively prohibited` |
+| IaC drift | post-apply refresh plan: **no changes** |
 
-No paid shape was substituted. Stage 6 destroyed the five network resources;
-the state is empty and the OCI project inventory is zero. See
+The earlier attempt was blocked in every AD by A1 `500-InternalError` capacity
+errors and E2 `400-LimitExceeded` tenancy limits. No paid shape was substituted.
+The earlier Stage 6 teardown destroyed the first attempt's five network
+resources; the retry created a fresh stack and remains live. See
+[`docs/stage-5-retry-verification.txt`](docs/stage-5-retry-verification.txt),
 [`docs/stage-5-verification.txt`](docs/stage-5-verification.txt) and
 [`docs/stage-6-verification.txt`](docs/stage-6-verification.txt).
 
@@ -266,9 +278,9 @@ GCP are ports, not certified targets.
 In short: final production verification and testing certification are performed
 strictly on OCI using trial credits; no AWS or GCP certification run is claimed.
 
-**Current certification status:** not awarded. Stage 5 was blocked by OCI
-compute capacity and a tenancy limit before any instance existed, so this
-repository does not claim a completed production verification or live host.
+**Current certification status:** live OCI verification is complete; the
+CloudGuard vault audit is the authoritative final status. No AWS or GCP
+certification run is claimed.
 
 ### AWS migration tips
 
@@ -299,9 +311,10 @@ repository does not claim a completed production verification or live host.
 
 The table uses the configured footprint of this project — **1 vCPU, 6 GB RAM,
 50 GB boot disk, SSH-only network** — and the closest free-tier equivalent on
-each provider. These are **list-price estimates, not live benchmark results**:
-the OCI compute instance was never created after the Stage 5 capacity/quota
-block. Prices are USD, exclude tax, and were reviewed on **2026-11-17**.
+each provider. These are **list-price estimates, not live benchmark results**;
+the live OCI instance confirms the shape fits the Always Free allowance, but no
+throughput benchmark was run. Prices are USD, exclude tax, and were reviewed on
+**2026-11-17**.
 
 | Provider / offer | vCPU | RAM | Boot disk | Monthly egress included | Estimated monthly |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -408,8 +421,8 @@ allowance in the provider calculator before budgeting.
 | 2 | OpenTofu OCI VCN, security list, compute | ✅ validated | [`terraform/README.md`](terraform/README.md) |
 | 3 | Agent playbook and operator prerequisites | ✅ complete | `docs/stage-3-verification.txt` |
 | 4 | Local stack, key auth, jump and audit tests | ✅ complete | `docs/stage-4-verification.txt` |
-| 5 | Live OCI deployment | ⚠️ blocked — capacity/quota | `docs/stage-5-verification.txt` |
-| 6 | Teardown and zero-resource verification | ✅ complete | `docs/stage-6-verification.txt` |
+| 5 | Live OCI deployment | ✅ complete — retry 2026-11-17 | `docs/stage-5-retry-verification.txt` |
+| 6 | Earlier-attempt teardown and zero-resource verification | ✅ complete | `docs/stage-6-verification.txt` |
 | 7 | Security audit, README and cost model | ✅ complete | `docs/stage-7-verification.txt` |
 | 8 | Git finalization, MIT license, release commit, push and `v1.0.0` | ✅ packaged | origin/`main` + tag |
 
@@ -418,12 +431,12 @@ attempts returned SSH exit `255`; a disposable target was reached through an
 explicit `ProxyCommand`; forwarding to target port 23 was denied; command and
 shell sessions produced JSONL records.
 
-OCI Stage 5 result: the network plane was created, but no compute instance was
-possible. Stage 6 destroyed the five network resources and verified an empty
-state and zero project-named resources.
+OCI Stage 5 result: the first attempt created only the network plane; the
+2026-11-17 retry created the A1.Flex host and passed the live SSH, audit, jump,
+port-restriction and no-drift checks. Stage 6 records the earlier teardown.
 
-CloudGuard vault: **indexed**, `has_iac=1`; `PORTABLE_CERTIFIED` remains pending
-a successful live verification.
+CloudGuard vault: `has_iac=1`; the final `PORTABLE_CERTIFIED`/score value is
+written only by the CloudGuard portability audit, not by this document.
 
 ---
 
@@ -435,21 +448,23 @@ a successful live verification.
 | Branch | `main` |
 | License | MIT — Copyright (c) 2026 Mostafa Kaveh |
 | Tag | `v1.0.0` |
-| Certification | **Not awarded** — Stage 5 live compute was blocked before any host existed |
+| Certification | **Live OCI checks passed; CloudGuard vault audit pending** |
 
-The tag is a code/documentation release of a locally verified and audited
-project. It is not a claim that a live OCI bastion host or production
-certification exists.
+The tag is a code/documentation release. Live host evidence is recorded in
+`docs/stage-5-retry-verification.txt`; certification status is owned by the
+CloudGuard vault audit.
 
 ---
 
 ## Honest limits
 
-- No live OCI host or public IP exists. Stage 5 was blocked before compute and
-  Stage 6 destroyed the remaining network resources. The live jump and
-  packet-level CIDR tests are therefore unverified.
-- The local CIDR checks validate Terraform/whitelist policy, not an OCI security
-  list in a live tenancy.
+- The live OCI host now exists at `132.145.249.219`; it was reached through the
+  operator tunnel and its security list exposes only TCP/22 from the operator
+  `/32`. A packet-level test from a second, unauthorized public egress was not
+  possible from this workstation and remains unverified.
+- The local CIDR checks validate Terraform/whitelist policy; the live security
+  list configuration was refreshed with no drift. Packet-level source-CIDR
+  enforcement from an untrusted address still requires a second network.
 - The cost table is a planning estimate based on published list prices and the
   configured footprint; it is not a benchmark and does not include every cloud
   line item.

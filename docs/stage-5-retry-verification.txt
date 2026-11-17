@@ -1,0 +1,246 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 5 retry — Live OCI Deployment & Integration
+Evidence transcript
+Date: 2026-11-17
+Region: eu-frankfurt-1
+Availability domain: jiTx:EU-FRANKFURT-1-AD-1
+Public IP: 132.145.249.219
+Private IP: 10.8.1.34
+Repository: https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+================================================================================
+
+RESULT
+------
+Stage 5 retry COMPLETE. The previously blocked A1.Flex deployment succeeded
+without changing the free-tier shape or substituting a paid instance.
+
+Created:
+
+  - VCN and public subnet (10.8.0.0/16 / 10.8.1.0/24);
+  - internet gateway and dedicated public route table;
+  - one-ingress TCP/22 security list;
+  - one VM.Standard.A1.Flex instance, 1 OCPU / 6 GB, 50 GB boot volume;
+  - public IP 132.145.249.219 and private IP 10.8.1.34.
+
+The live host passed cloud-init, Docker readiness, remote Compose startup,
+key-only authentication, negative authentication, JSONL audit, end-to-end jump
+and target-port restriction checks.
+
+No OCID, private key, operator credential or runtime secret is included in this
+tracked transcript.
+
+--------------------------------------------------------------------------------
+1. PRECONDITIONS AND PLAN
+--------------------------------------------------------------------------------
+The local OCI profile and API key were present at the standard user paths.
+The existing gitignored terraform.tfvars still selected the free-tier A1 shape.
+The operator egress /32 remained 80.131.213.122/32.
+
+  $ git check-ignore -v terraform/terraform.tfvars terraform/terraform.tfstate .env
+  .gitignore:52:*.tfvars      terraform/terraform.tfvars
+  .gitignore:50:*.tfstate     terraform/terraform.tfstate
+  .gitignore:9:.env           .env
+
+  $ tofu fmt -recursive -check
+  (no output; exit 0)
+
+  $ tofu init -input=false
+  OpenTofu has been successfully initialized!
+
+  $ tofu validate
+  Success! The configuration is valid.
+
+  $ tofu test
+  Success! 0 passed, 0 failed.
+
+  $ tofu plan -input=false -out=../runtime/stage5-retry.tfplan
+  Plan: 6 to add, 0 to change, 0 to destroy.
+
+The plan selected VM.Standard.A1.Flex (1 OCPU / 6 GB) in
+jiTx:EU-FRANKFURT-1-AD-1. The saved plan was applied as-is.
+
+--------------------------------------------------------------------------------
+2. APPLY AND HOST BOOTSTRAP
+--------------------------------------------------------------------------------
+  $ tofu apply -input=false ../runtime/stage5-retry.tfplan
+  Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
+
+Safe outputs observed:
+
+  availability_domain = "jiTx:EU-FRANKFURT-1-AD-1"
+  instance_shape      = "VM.Standard.A1.Flex (1 OCPU / 6 GB)"
+  instance_public_ip  = "132.145.249.219"
+  instance_private_ip = "10.8.1.34"
+  ingress_ports       = [22]
+  ingress_exposure    = [{ port = 22, source = "80.131.213.122/32" }]
+
+The instance OCID remains in local, gitignored state; it is intentionally not
+published in this transcript.
+
+SSH host bootstrap used the existing operator key:
+
+  $ ssh ubuntu@132.145.249.219 'cloud-init status --wait; ...'
+  status: done
+  --- host ---
+  ubuntu
+  bastion
+  Docker version 29.1.3, build 29.1.3-0ubuntu3~24.04.2
+  Docker Compose version 2.40.3+ds1-0ubuntu1~24.04.1
+  active
+  git version 2.43.0
+  Mem: 5.8Gi total
+
+The host was cloned from the public repository at commit 0c1d7ec. Runtime
+directories were created outside Git; the operator public key only was copied
+to runtime/authorized_keys/bastion. No private key was copied to the host.
+
+--------------------------------------------------------------------------------
+3. REMOTE COMPOSE STACK
+--------------------------------------------------------------------------------
+  $ docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+  ...
+  Container cg-bastion Started
+
+  $ docker compose --env-file .env -f docker/docker-compose.yml ps
+  cg-bastion ... Up (healthy) 127.0.0.1:2222->2222/tcp
+
+The listener remained loopback-only on the host. No OCI ingress rule for 2222
+was added; live container access used an operator SSH tunnel to the host's
+already-approved TCP/22 listener.
+
+Effective sshd policy:
+
+  port 2222
+  permitrootlogin no
+  pubkeyauthentication yes
+  passwordauthentication no
+  allowtcpforwarding yes
+  forcecommand /usr/local/bin/session-audit
+  authorizedkeysfile /run/authorized_keys/%u
+  allowusers bastion
+  permitopen *:22
+
+Runtime mount note: the deployment clone lived at
+/opt/cloudguard-bastion/app. The Compose defaults are relative to
+docker/docker-compose.yml, so the operator .env was pointed at the existing
+user-owned runtime directories. Host keys stayed in the container-created,
+root-owned runtime directory. The tracked template was not modified.
+
+--------------------------------------------------------------------------------
+4. LIVE AUTHENTICATION MATRIX
+--------------------------------------------------------------------------------
+The operator tunnel exposed only 127.0.0.1:2222 locally; the OCI security list
+still admitted only TCP/22 from the operator /32.
+
+| Case | Command/identity | Result | Exit |
+| --- | --- | --- | --- |
+| Valid key, command | `ssh -p 2222 -i ~/.ssh/bastion_admin bastion@127.0.0.1 'id -un; hostname; echo stage5-live-ok'` | `bastion`, `f095779b441d`, `stage5-live-ok` | `0` |
+| Missing/password | password-only, no public key, BatchMode | `Permission denied (publickey)` | `255` |
+| Invalid key | second local ed25519 key, BatchMode | `Permission denied (publickey)` | `255` |
+| Root with valid key | `root@127.0.0.1`, valid operator key | `Permission denied (publickey)` | `255` |
+
+sshd log selected evidence:
+
+  Accepted publickey for bastion ... ED25519 SHA256:r0jsh...
+  Starting session: forced-command (config) '/usr/local/bin/session-audit'
+  Failed publickey for bastion ... ED25519 SHA256:cc+1n...
+  Connection closed by invalid user root ... [preauth]
+
+--------------------------------------------------------------------------------
+5. LIVE SESSION AUDIT
+--------------------------------------------------------------------------------
+The valid command session produced a JSONL record on the remote, gitignored
+audit mount:
+
+  {"timestamp":"2026-11-17T22:51:50Z","user":"bastion",
+   "source":"172.18.0.1","action":"command",
+   "command":"id -un; hostname; echo stage5-live-ok"}
+
+The source is the Docker bridge gateway, not the original workstation address.
+This is the documented port-publishing limitation; the operator tunnel also
+terminates at the host. True client-IP attribution requires host networking or
+a forwarding proxy.
+
+No audit record, host key or authorized key was committed.
+
+--------------------------------------------------------------------------------
+6. END-TO-END JUMP AND PORT RESTRICTION
+--------------------------------------------------------------------------------
+A disposable Alpine SSH target was started only on the remote
+cloudguard-bastion_default Docker network. Its private address was 172.18.0.3.
+The target accepted only the same public key.
+
+  $ ssh -o "ProxyCommand=ssh -p 2222 ... -W %h:%p bastion@127.0.0.1" \
+      -i ~/.ssh/bastion_admin target@172.18.0.3 \
+      'id -un; echo stage5-jump-ok'
+  target
+  stage5-jump-ok
+  exit=0
+
+Target sshd log:
+
+  Accepted publickey for target from 172.18.0.2 port 42620
+    ssh2: ED25519 SHA256:r0jsh...
+
+The bastion forwarded the connection from its container address 172.18.0.2.
+
+Port restriction:
+
+  $ ssh -p 2222 -i ~/.ssh/bastion_admin -W 172.18.0.3:23 \
+      bastion@127.0.0.1 </dev/null
+  channel 0: open failed: administratively prohibited: open failed
+  stdio forwarding failed
+  exit=255
+
+This confirms PermitOpen *:22 rejects a target port other than 22.
+
+The disposable target was removed after the test. The bastion instance and
+container remain running; no teardown was requested.
+
+--------------------------------------------------------------------------------
+7. POST-APPLY DRIFT AND EXPOSURE
+--------------------------------------------------------------------------------
+  $ tofu plan -refresh=true -detailed-exitcode
+  No changes. Your infrastructure matches the configuration.
+  exit=0
+
+  $ tofu output ingress_exposure
+  [{ port = 22, source = "80.131.213.122/32" }]
+
+  $ tofu output ingress_ports
+  [22]
+
+The live security list exposes exactly one ingress service: TCP/22 from the
+operator /32. There is no inbound 80/443, ICMP, 2222 or catch-all rule.
+
+--------------------------------------------------------------------------------
+8. NOT EXECUTED / LIMITATIONS
+--------------------------------------------------------------------------------
+- A packet-level connection attempt from a second, unauthorized public egress
+  was not possible from this workstation. The security-list configuration was
+  refreshed and verified, but external-source denial is not claimed as a
+  packet-level test.
+- This project has no alerting/monitoring channel, so no down/recovered alert
+  drill is claimed.
+- The audit source address is the Docker bridge gateway because the container
+  publishes its listener through Docker NAT; this is documented behavior, not
+  a server-side credential failure.
+- The bastion remains live and will consume Always Free/trial resources until
+  an explicit teardown is requested.
+
+--------------------------------------------------------------------------------
+9. GIT BOUNDARY
+--------------------------------------------------------------------------------
+  - terraform.tfvars, state, provider cache and runtime material remain ignored;
+  - no private key, host key, authorized key, audit file, OCID or operator
+    credential is present in this transcript;
+  - the public IP and private IP are public operational metadata;
+  - the deployment used the already-published v1.0.0 source.
+
+================================================================================
+STAGE 5 RETRY RESULT: COMPLETE
+Six OCI resources created; cloud-init and Docker passed; remote container
+healthy; key-only authentication, negative auth, JSONL audit, live jump and
+port-22-only forwarding verified; no IaC drift.
+================================================================================
