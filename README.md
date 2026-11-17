@@ -3,7 +3,7 @@
 ![Alpine](https://img.shields.io/badge/base-Alpine%203.23-0D597F?logo=alpine-linux&logoColor=white)
 ![OpenSSH](https://img.shields.io/badge/access-public--key%20only-4E9A06)
 ![Docker](https://img.shields.io/badge/Docker-read--only%20%2B%20cap__drop%20ALL-2496ED?logo=docker&logoColor=white)
-![Stage](https://img.shields.io/badge/stage-4%20%C2%B7%20locally%20tested-blue)
+![Stage](https://img.shields.io/badge/stage-5%20%C2%B7%20blocked-red)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A small, hardened SSH jump host for reaching private cloud resources without
@@ -11,12 +11,13 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to the private subnet; password auth, root
 login, SFTP and reverse tunnels are disabled.
 
-**Stage 4 status:** the local stack, key-only authentication, SSH jump path and
-JSONL session audit have been exercised successfully. Missing, invalid and root
-keys are refused; forwarding to a non-22 target port is denied; the whitelist
-validator now rejects world-open and malformed CIDRs. No OCI resource has been
-created or applied; live plan/apply belongs to Stage 5, and TLS proxying is
-later. Certification is scoped strictly to OCI trial credits.
+**Stage 5 status — blocked before compute:** the OCI VCN, internet gateway,
+route table, public subnet and one-ingress TCP/22 security list were created in
+`eu-frankfurt-1`. Compute creation is blocked: A1.Flex reports **out of host
+capacity** in all three ADs, and the E2.1.Micro fallback returns
+**LimitExceeded**. No instance, public IP, remote Docker stack or live jump
+exists. Stage 4 local tests remain verified; certification is scoped strictly
+to OCI trial credits.
 
 ---
 
@@ -154,6 +155,25 @@ Raw transcript: [`docs/stage-4-verification.txt`](docs/stage-4-verification.txt)
 
 ---
 
+## OCI deployment attempt (Stage 5 — blocked)
+
+| Item | Result |
+| --- | --- |
+| OpenTofu init/validate/test | pass; 0 tests |
+| Plan | 6 to add; one TCP/22 ingress from operator `/32` |
+| Network apply | VCN, IGW, route table, security list, subnet created |
+| A1.Flex AD-1/2/3 | `500-InternalError, Out of host capacity` |
+| E2.1.Micro AD-1/2 | `400-LimitExceeded, The limit for this tenancy has been exceeded` |
+| Compute instance / public IP | **not created / none** |
+| Remote deployment and live checks | **not run** |
+
+No `feat(deploy)` success is claimed. The local state contains the network
+resources only; the operator must free A1 capacity or raise the compute limit
+before retrying. Evidence:
+[`docs/stage-5-verification.txt`](docs/stage-5-verification.txt).
+
+---
+
 ## Access policy
 
 `bastion/access/whitelist.example.json` describes the administrative identity,
@@ -260,23 +280,25 @@ Raw transcript: [`docs/stage-1-verification.txt`](docs/stage-1-verification.txt)
 | 2 | OpenTofu OCI VCN, security list, compute and bastion host | ✅ validated |
 | 3 | Agent playbook, operator prerequisites, OCI certification scope | ✅ complete |
 | 4 | Local stack, SSH auth/jump and session-audit verification | ✅ complete |
-| 5 | Live OCI deployment, host bootstrap, real jump/audit test | not started |
+| 5 | Live OCI deployment, host bootstrap, real jump/audit test | ⚠️ blocked — capacity/quota |
 | 6 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
 | 7 | Packaging, cost model, zero-leak audit | not started |
 | 8 | Teardown, provider verification, CloudGuard certification | not started |
 
-CloudGuard vault status after Stage 4: **indexed**, `has_iac=1` —
-`PORTABLE_CERTIFIED` remains pending the later verification stages.
+CloudGuard vault status after the Stage 5 attempt: **indexed**, `has_iac=1` —
+`PORTABLE_CERTIFIED` remains pending a successful live verification.
 
 ---
 
 ## Honest limits
 
-- Stages 1–4 are local only. Nothing in this repository creates or verifies a
-  cloud resource, and no live deployment is claimed; `tofu validate` proves the
-  configuration, not a host.
+- Stage 4 and earlier were local only. Stage 5 created the OCI network only; no
+  compute instance, public IP or remote host exists, and no live deployment is
+  claimed. `tofu validate` proves the configuration, not a host.
 - The local CIDR test proves Terraform and whitelist policy rejection, not OCI
-  security-list packet enforcement; that requires the live stage.
+  security-list packet enforcement; that remains a live-stage check.
+- The A1 capacity and E2 tenancy-limit errors are recorded as blockers; no paid
+  shape was substituted and no unrelated tenancy resource was touched.
 - The host private key is generated under `runtime/host_keys` and is gitignored;
   the administrator private key remains outside the repository in `~/.ssh`.
 - sshd must run as the root master; the container narrows capabilities but does

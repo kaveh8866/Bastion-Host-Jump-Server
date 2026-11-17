@@ -1,0 +1,183 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 5 — Cloud Deployment & Integration on OCI
+Deployment-attempt evidence transcript
+Date: 2026-11-17
+Region: eu-frankfurt-1
+Operator source: 80.131.213.122/32 (current egress address)
+Repository: https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+================================================================================
+
+RESULT
+------
+Stage 5 is BLOCKED before remote deployment. The OCI network perimeter was
+provisioned, but no compute instance could be created. Consequently there is:
+
+  - no instance public IP;
+  - no SSH host to bootstrap;
+  - no remote Docker Compose stack;
+  - no live bastion authentication, routing or audit test.
+
+No simulated or console-only deployment is substituted for those checks. No
+trial-credit charge is claimed for compute, because no instance was created.
+
+--------------------------------------------------------------------------------
+1. LOCAL INPUTS (NOT PRINTED)
+--------------------------------------------------------------------------------
+The local OCI profile and API signing key exist at the standard user paths.
+A gitignored `terraform/terraform.tfvars` was generated from:
+
+  - tenancy OCID from `~/.oci/config`;
+  - compartment set to that tenancy (the project's own root compartment);
+  - region `eu-frankfurt-1`;
+  - `allowed_ssh_cidr` set to the current public egress /32;
+  - `ssh_public_key` set to the public half of the local ed25519 key.
+
+The private key and tfvars values were never printed, copied into a tracked
+file, or committed. The tfvars and OpenTofu state are ignored by Git.
+
+  $ git check-ignore -v terraform/terraform.tfvars
+  .gitignore:52:*.tfvars  terraform/terraform.tfvars
+
+--------------------------------------------------------------------------------
+2. INIT, VALIDATE, TEST, PLAN
+--------------------------------------------------------------------------------
+  $ tofu init -input=false
+  OpenTofu has been successfully initialized!
+
+  $ tofu validate
+  Success! The configuration is valid.
+
+  $ tofu test
+  Success! 0 passed, 0 failed.
+
+  $ tofu plan -out=../runtime/stage5.tfplan
+  Plan: 6 to add, 0 to change, 0 to destroy.
+
+Planned perimeter:
+
+  ingress_security_rules {
+    description = "Bastion SSH from the operator/management CIDR only"
+    protocol    = "6"                 # TCP
+    source      = "80.131.213.122/32"
+    tcp_options { min = 22; max = 22 }
+  }
+
+No inbound 80/443, ICMP or management ports are present. Egress is explicit:
+TCP/22 to 10.8.0.0/16, TCP/80 and TCP/443 to the internet, UDP/53 for DNS.
+
+The plan selected `VM.Standard.A1.Flex` (1 OCPU / 6 GB) in
+`jiTx:EU-FRANKFURT-1-AD-1`.
+
+--------------------------------------------------------------------------------
+3. NETWORK APPLY (SUCCEEDED)
+--------------------------------------------------------------------------------
+The saved plan was applied. Five network resources were created:
+
+  module.network.oci_core_vcn.this
+  module.network.oci_core_internet_gateway.this
+  module.network.oci_core_route_table.public
+  module.network.oci_core_security_list.public
+  module.network.oci_core_subnet.public
+
+Observed security-list state:
+
+  ingress_security_rules {
+    description = "Bastion SSH from the operator/management CIDR only"
+    protocol    = "6"
+    source      = "80.131.213.122/32"
+    tcp_options { min = 22; max = 22 }
+  }
+
+  egress_security_rules: TCP/22 -> 10.8.0.0/16
+  egress_security_rules: TCP/80 -> 0.0.0.0/0
+  egress_security_rules: TCP/443 -> 0.0.0.0/0
+  egress_security_rules: UDP/53 -> 0.0.0.0/0
+
+The network is a live OCI resource. No compute instance was created.
+
+--------------------------------------------------------------------------------
+4. COMPUTE ATTEMPTS AND ERRORS
+--------------------------------------------------------------------------------
+A1.Flex, the Always Free ARM shape, was attempted in every availability
+domain. Each request failed with the same provider/API error:
+
+  AD-1  Error: 500-InternalError, Out of host capacity.
+  AD-2  Error: 500-InternalError, Out of host capacity.
+  AD-3  Error: 500-InternalError, Out of host capacity.
+
+The documented trial-compatible fallback `VM.Standard.E2.1.Micro`
+(1 OCPU / 1 GB) was then attempted:
+
+  AD-1  Error: 400-LimitExceeded, The limit for this tenancy has been exceeded.
+  AD-2  Error: 400-LimitExceeded, The limit for this tenancy has been exceeded.
+
+Both errors came from the OCI Core Instance LaunchInstance operation. The
+`LimitExceeded` error is a tenancy service-limit result, not an SSH or
+Terraform configuration error. No instance appears in OpenTofu state:
+
+  $ tofu state list
+  module.network.oci_core_internet_gateway.this
+  module.network.oci_core_route_table.public
+  module.network.oci_core_security_list.public
+  module.network.oci_core_subnet.public
+  module.network.oci_core_vcn.this
+
+  $ tofu output
+  security_list_id, subnet_id and vcn_id are present;
+  instance_id, instance_public_ip and instance_private_ip are absent.
+
+The saved `terraform.tfvars` remains the A1.Flex input. The failed E2 attempts
+used command-line overrides and did not create a billable instance.
+
+--------------------------------------------------------------------------------
+5. WHAT WAS NOT RUN
+--------------------------------------------------------------------------------
+Because there is no public IP, these required live steps were not attempted:
+
+  - SSH to `ubuntu@<instance-public-ip>`;
+  - `cloud-init status --wait`;
+  - remote Docker installation check;
+  - repository transfer and remote `docker compose up -d`;
+  - remote key-only login, invalid-key rejection, command audit and jump test;
+  - live source-IP/security-list verification from an unauthorized address.
+
+There is no live host, no service status, and no public endpoint to report.
+
+--------------------------------------------------------------------------------
+6. OPERATOR ACTION REQUIRED
+--------------------------------------------------------------------------------
+The deployment can resume without re-planning the network once either condition
+is resolved in this OCI tenancy:
+
+  1. Free A1.Flex capacity in one of the Frankfurt ADs; or
+  2. An OCI compute service-limit increase for the free-tier shape, or unused
+     instances in the tenancy released (I did not touch unrelated resources).
+
+After that, rerun:
+
+  cd terraform
+  tofu plan -out=../runtime/stage5-retry.tfplan
+  tofu apply ../runtime/stage5-retry.tfplan
+  tofu output instance_public_ip
+
+Then continue with the SSH bootstrap and live verification in the Stage 5
+runbook. The existing VCN, subnet, route table and security list can be reused;
+no destroy was requested.
+
+--------------------------------------------------------------------------------
+7. GIT / SECRET BOUNDARY
+--------------------------------------------------------------------------------
+  - terraform.tfvars ignored;
+  - OpenTofu state ignored;
+  - OCI private key only in the user profile, never read into this transcript;
+  - no OCID, operator credential or private key committed;
+  - no `feat(deploy)` claim is made because deployment did not complete.
+
+The repository change accompanying this transcript is documentation only:
+`docs: record OCI compute capacity and quota blockers for bastion deployment`.
+
+================================================================================
+STAGE 5 RESULT: BLOCKED — network provisioned, compute not created.
+No public IP, remote stack or live verification exists.
+================================================================================
