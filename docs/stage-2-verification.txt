@@ -1,0 +1,113 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 2 — IaC Provisioning with OpenTofu
+Evidence transcript
+Date: 2026-11-17
+Host: Windows 11 + Git Bash
+OpenTofu: 1.13.9 (windows_amd64)
+Provider: oracle/oci 7.32.0
+Repository: https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+Branch: main
+================================================================================
+
+SCOPE EXECUTED
+--------------
+1. Root OpenTofu contract: provider, variables, outputs, state guidance.
+2. Network module: VCN 10.8.0.0/16, internet gateway, public route table,
+   public subnet 10.8.1.0/24 and a security list with one ingress service.
+3. Compute module: Ubuntu 24.04 image resolution, A1.Flex shape config,
+   availability-domain selection, public VNIC and instance metadata.
+4. Cloud-init: Docker/Compose, daemon hardening, host SSH hardening,
+   unattended security updates and an empty runtime directory; no credentials.
+5. Placeholder-only terraform.tfvars.example and a tracked provider lock file.
+6. `tofu fmt -recursive -check` and `tofu validate` executed.
+
+NOT EXECUTED IN THIS STAGE
+--------------------------
+- No `tofu plan` or `tofu apply`: no OCI resource was created, changed or
+  destroyed. Stage 2 is the IaC contract; live provisioning is Stage 3.
+- No OCI credentials or tfvars values were read into this transcript.
+- No GitHub push; the scaffold and IaC commits remain local.
+
+--------------------------------------------------------------------------------
+1. PERIMETER CONTRACT
+--------------------------------------------------------------------------------
+Security list ingress:
+  TCP/22 from allowed_ssh_cidr only
+  no TCP/80, no TCP/443, no ICMP, no management ports
+
+Security list egress:
+  TCP/22 -> private_target_cidr
+  TCP/80 -> 0.0.0.0/0
+  TCP/443 -> 0.0.0.0/0
+  UDP/53 -> 0.0.0.0/0
+
+allowed_ssh_cidr validation refuses 0.0.0.0/0 and ::/0. The host SSH daemon
+owns 22; the Stage 1 Compose listener remains loopback-bound on 2222.
+
+--------------------------------------------------------------------------------
+2. FORMATTING
+--------------------------------------------------------------------------------
+$ tofu fmt -recursive -check
+(no output; exit 0)
+
+--------------------------------------------------------------------------------
+3. INITIALISATION
+--------------------------------------------------------------------------------
+$ tofu init -backend=false -input=false
+OpenTofu has been successfully initialized!
+...
+Provider: registry.opentofu.org/oracle/oci 7.32.0
+Lock file: terraform/.terraform.lock.hcl
+
+--------------------------------------------------------------------------------
+4. VALIDATION
+--------------------------------------------------------------------------------
+$ tofu validate
+Success! The configuration is valid.
+
+The first validation attempt exposed two module-level provider declarations
+that were missing `source = "oracle/oci"`; both modules now declare the provider
+explicitly. A second issue was the OCI VNIC attribute names; outputs now use
+`public_ip_address` and `private_ip_address` from the provider schema.
+
+--------------------------------------------------------------------------------
+5. CLOUD-INIT INPUTS
+--------------------------------------------------------------------------------
+The template parses as YAML with the expected keys:
+
+  final_message, package_update, packages, runcmd, ssh_pwauth, write_files
+
+Packages checked against the Ubuntu 24.04 archive:
+  docker.io                available
+  docker-compose-v2        available
+  unattended-upgrades      available
+
+No credential, host key, authorized key or .env appears in user-data.
+
+--------------------------------------------------------------------------------
+6. GIT BOUNDARY
+--------------------------------------------------------------------------------
+$ git check-ignore -v terraform/terraform.tfvars
+  ignored
+$ git check-ignore -v terraform/terraform.tfstate
+  ignored
+$ git check-ignore -v terraform/.terraform/plugins
+  ignored
+$ git check-ignore -v terraform/terraform.tfvars.example
+  trackable (placeholder template only)
+
+Tracked IaC files: main.tf, variables.tf, outputs.tf, provider.tf, versions.tf,
+terraform.tfvars.example, cloud-init.yaml.tftpl, .terraform.lock.hcl and the
+two modules. No tfvars, state or provider cache is tracked.
+
+--------------------------------------------------------------------------------
+7. RESULT
+--------------------------------------------------------------------------------
+Stage 2 configuration is valid and formatted. No cloud resource exists.
+CloudGuard vault: has_iac updated to 1 after commit; PORTABLE_CERTIFIED remains
+pending the live provisioning, verification and teardown stages.
+
+================================================================================
+STAGE 2 RESULT: COMPLETE (IaC VALIDATED; NOT APPLIED)
+================================================================================

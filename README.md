@@ -11,10 +11,11 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to the private subnet; password auth, root
 login, SFTP and reverse tunnels are disabled.
 
-**Stage 1 status:** scaffold and local verification complete. The image builds,
-the container is healthy, key-only login works, and every interactive command
-is written to a JSONL audit trail. No OCI resource has been created or applied;
-`terraform/` is reserved for Stage 2, and TLS proxying is a later stage.
+**Stage 2 status:** the OpenTofu OCI network and compute contract is complete
+and `tofu validate` passes. Stage 1's container remains locally verified:
+healthy, key-only login works, and every interactive command is written to a
+JSONL audit trail. No OCI resource has been created or applied; live plan/apply
+belongs to Stage 3, and TLS proxying is a later stage.
 
 ---
 
@@ -29,7 +30,7 @@ is written to a JSONL audit trail. No OCI resource has been created or applied;
 | Runtime controls | Read-only rootfs, `cap_drop: ALL` with four sshd capabilities, `no-new-privileges`, PID/memory/CPU limits, log rotation |
 | Git boundary | `.env`, host keys, authorized keys, audit logs, runtime state and OpenTofu state are ignored |
 | Access policy | Versioned whitelist schema, placeholder policy and a `jq` validator |
-| IaC | `terraform/` reserved with the Stage 2 resource contract; no resources applied |
+| IaC | `terraform/` OpenTofu network + compute modules; validated, no resources applied |
 | Verification | `docs/stage-1-verification.txt` |
 
 ---
@@ -91,6 +92,28 @@ The container publishes `127.0.0.1:2222` by default. Set
 
 ---
 
+## OpenTofu / OCI (Stage 2)
+
+The infrastructure contract lives in [`terraform/`](terraform/README.md): a
+10.8.0.0/16 VCN, an internet gateway, a public 10.8.1.0/24 subnet, a security
+list with **one ingress rule (TCP/22 from `allowed_ssh_cidr`)** and explicit
+egress for private SSH, HTTP/HTTPS and DNS, plus an Always Free eligible
+`VM.Standard.A1.Flex` instance running Ubuntu 24.04.
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars
+# edit tenancy, compartment, operator /32 and public key
+tofu init && tofu fmt -recursive -check && tofu validate
+```
+
+The host SSH daemon owns TCP/22; the Compose listener remains loopback-bound on
+2222 until a deployment stage deliberately changes the mapping. No OCI resource
+was created in Stage 2, and `terraform.tfvars`/state stay local and ignored.
+AWS/GCP mapping notes are in the module comments and the Terraform README.
+
+---
+
 ## Access policy
 
 `bastion/access/whitelist.example.json` describes the administrative identity,
@@ -128,7 +151,7 @@ layer in a later stage can consume the same schema for per-target enforcement.
 │   ├── hardening.md            controls, lifecycle and known limits
 │   ├── whitelist.schema.json   JSON Schema draft 2020-12
 │   └── README.md
-├── terraform/                  reserved for Stage 2 (no resources yet)
+├── terraform/                  OpenTofu OCI VCN, security list and compute modules
 ├── docs/                       stage evidence
 ├── .env.example                placeholders only
 ├── .gitignore                  strict zero-leak boundary
@@ -192,7 +215,7 @@ Raw transcript: [`docs/stage-1-verification.txt`](docs/stage-1-verification.txt)
 | Stage | Scope | Status |
 | --- | --- | --- |
 | 1 | Scaffold, container, SSH/audit policy, zero-leak boundary, local verification | ✅ complete |
-| 2 | OpenTofu OCI VCN, security list, compute and reserved endpoint | reserved |
+| 2 | OpenTofu OCI VCN, security list, compute and bastion host | ✅ validated |
 | 3 | Live deployment on OCI, host bootstrap, real jump/audit test | not started |
 | 4 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
 | 5 | Packaging, agent/operator guides, cost model, zero-leak audit | not started |
@@ -205,8 +228,9 @@ remains pending the later verification stages.
 
 ## Honest limits
 
-- Stage 1 is local only. Nothing in this repository creates or verifies a cloud
-  resource, and no live deployment is claimed.
+- Stages 1–2 are local only. Nothing in this repository creates or verifies a
+  cloud resource, and no live deployment is claimed; `tofu validate` proves the
+  configuration, not a host.
 - sshd must run as the root master; the container narrows capabilities but does
   not run the daemon as an unprivileged user. Session processes run as uid 1000.
 - `ForceCommand` audits interactive and command sessions. OpenSSH handles

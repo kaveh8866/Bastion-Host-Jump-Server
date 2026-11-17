@@ -1,0 +1,78 @@
+#cloud-config
+# =============================================================================
+# Bastion Host / Jump Server — first-boot bootstrap (${project_name})
+# =============================================================================
+# Prepares the OCI host and stops there: Docker, a hardened daemon config, SSH
+# hardening, unattended security updates and an empty runtime directory.
+#
+# This file is rendered into instance user-data, which is readable from the
+# metadata service by any process on the host. It therefore contains **no
+# credential, no host key, no authorized key and no .env**. The Compose stack is
+# installed over SSH in the deployment stage.
+
+package_update: true
+ssh_pwauth: false
+
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - jq
+  - unattended-upgrades
+  - docker.io
+  - docker-compose-v2
+
+write_files:
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "no-new-privileges": true,
+        "live-restore": true,
+        "userland-proxy": false,
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+
+  - path: /etc/ssh/sshd_config.d/99-cloudguard-bastion.conf
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      PermitRootLogin no
+      KbdInteractiveAuthentication no
+      X11Forwarding no
+      AllowAgentForwarding no
+      PermitTunnel no
+
+  - path: /etc/motd
+    permissions: "0644"
+    content: |
+      ${project_name} — OCI bastion host
+      Docker is installed; the hardened container is not running yet.
+
+      Runtime directory: ${install_dir}
+      Container listener (loopback by default): 2222
+      Only TCP/22 is admitted by the security list.
+
+      Deploy over SSH:
+        git clone ${repository_url}
+        cd Bastion-Host-Jump-Server
+        mkdir -p runtime/host_keys runtime/authorized_keys runtime/audit
+        cp .env.example .env
+        # add your public key to runtime/authorized_keys/bastion
+        docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+
+      Never place a credential, host key or .env in user-data.
+
+runcmd:
+  - systemctl enable --now docker
+  - usermod -aG docker ubuntu
+  - systemctl restart docker
+  - mkdir -p ${install_dir}/runtime/host_keys ${install_dir}/runtime/authorized_keys ${install_dir}/runtime/audit
+  - chown -R ubuntu:ubuntu ${install_dir}
+  - chmod 0700 ${install_dir}/runtime/host_keys
+  - chmod 0700 ${install_dir}/runtime/audit
+  - systemctl enable --now unattended-upgrades
+  - systemctl restart ssh
+
+final_message: "${project_name} host ready after $UPTIME seconds"

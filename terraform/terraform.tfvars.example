@@ -1,0 +1,39 @@
+# =============================================================================
+# Bastion Host / Jump Server — OCI variables template
+# =============================================================================
+# Copy to terraform.tfvars (gitignored) and replace every placeholder. Never put
+# a private key, API signing key or real OCI credential in this file or in a
+# commit. The public key below is deliberately invalid.
+
+tenancy_ocid     = "ocid1.tenancy.oc1..placeholder-not-a-real-ocid"
+compartment_ocid = "ocid1.compartment.oc1..placeholder-not-a-real-ocid"
+region           = "eu-frankfurt-1"
+
+# Your operator address, not the internet. A /32 is strongly preferred.
+allowed_ssh_cidr = "203.0.113.10/32"
+
+# OpenSSH public key *content* (usually the output of `cat ~/.ssh/id_ed25519.pub`).
+ssh_public_key = "ssh-ed25519 PLACEHOLDER_PUBLIC_KEY admin@example.invalid"
+
+# Always Free ARM first; use VM.Standard.E2.1.Micro if A1 capacity is unavailable.
+instance_shape      = "VM.Standard.A1.Flex"
+instance_ocpus      = 1
+instance_memory_gbs = 6
+boot_volume_size_gbs = 50
+
+# Optional: pin an AD after "Out of host capacity"; leave null for the first AD.
+# availability_domain = "example:EU-FRANKFURT-1-AD-2"
+
+# Optional: pin an image instead of resolving the newest compatible Ubuntu 24.04.
+# image_id = "ocid1.image.oc1..placeholder-not-a-real-ocid"
+
+# Network (defaults are disjoint from the other CloudGuard projects).
+vcn_cidr            = "10.8.0.0/16"
+subnet_cidr         = "10.8.1.0/24"
+private_target_cidr = "10.8.0.0/16"
+
+# OCI auth: leave the profile null to use the provider default / ~/.oci/config.
+# user_ocid           = "ocid1.user.oc1..placeholder-not-a-real-ocid"
+# fingerprint         = "aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99"
+# private_key_path    = "/home/operator/.oci/oci_api_key.pem"
+# config_file_profile = "DEFAULT"
