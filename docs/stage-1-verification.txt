@@ -1,0 +1,204 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 1 — Scaffold & CloudGuard Profiling
+Evidence transcript
+Date: 2026-11-17
+Host: Windows 11 + Git Bash, Docker 29.9 / Compose v5.7
+Base image: alpine:3.23 (multi-arch digest)
+Repository: https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+Branch: main
+================================================================================
+
+SCOPE EXECUTED
+--------------
+1. Enterprise tree: docker/, bastion/, configs/, terraform/ (reserved), docs/.
+2. Multi-arch Alpine image with OpenSSH, jq and tini; no compiler, no cache.
+3. Hardened runtime: read-only rootfs, cap_drop ALL + four sshd capabilities,
+   no-new-privileges, pids/memory/CPU limits, json-file rotation.
+4. Key-only SSH policy: no root, no password, one allowlisted account,
+   TCP/22 forwarding only, no reverse tunnels, JSONL session audit.
+5. Strict zero-leak boundary and placeholder .env.example.
+6. Local verification: Compose syntax, image build, health, real SSH session,
+   negative auth, audit record, whitelist validation, Git ignore checks.
+7. CloudGuard metadata row prepared (status: indexed; certification pending).
+
+NOT EXECUTED IN THIS STAGE
+--------------------------
+- No OCI resources were planned, applied or destroyed. terraform/ contains only
+  a README describing the Stage 2 resource contract.
+- No GitHub push, release or tag. The scaffold commit is local.
+- No end-to-end forward to a real private target (no target exists yet); the
+  forwarding path was exercised to the target-connect stage only.
+- No TLS proxy or MFA implementation.
+
+--------------------------------------------------------------------------------
+1. COMPOSE AND IMAGE
+--------------------------------------------------------------------------------
+$ docker compose --env-file .env.example -f docker/docker-compose.yml config -q
+(no output; exit 0: configuration valid)
+
+$ docker compose --env-file .env.example -f docker/docker-compose.yml build
+...
+#14 exporting manifest list sha256:2610b13419eed9e87d690a605963876d33feb432e857071cf63ca32e06eb78fd done
+#14 naming to docker.io/cloudguard/bastion:local done
+#14 DONE 1.1s
+Image cloudguard/bastion:local Built
+
+$ docker compose --env-file .env.example -f docker/docker-compose.yml ps
+NAME         IMAGE                      STATUS                   PORTS
+cg-bastion   cloudguard/bastion:local   Up (healthy)             127.0.0.1:2222->2222/tcp
+
+Image base is the multi-arch Alpine 3.23 index. Host keys are not present in
+the image: the entrypoint generates the ed25519 key into runtime/host_keys.
+
+--------------------------------------------------------------------------------
+2. KEY-ONLY SSH SESSION
+--------------------------------------------------------------------------------
+A temporary ed25519 test key was generated under runtime/ (ignored) and its
+public key copied to runtime/authorized_keys/bastion for the test.
+
+$ ssh -p 2222 -i runtime/admin_test_key \
+    -o IdentitiesOnly=yes -o StrictHostKeyChecking=no \
+    -o UserKnownHostsFile=/dev/null -o BatchMode=yes \
+    bastion@127.0.0.1 'id -un; echo bastion-ok'
+bastion
+bastion-ok
+exit 0
+
+The server log confirms the policy path:
+
+  Accepted publickey for bastion from 172.24.0.1 ... ED25519 SHA256:...
+  Starting session: forced-command (config) '/usr/local/bin/session-audit'
+  Disconnected from user bastion ...
+
+--------------------------------------------------------------------------------
+3. NEGATIVE AUTHENTICATION
+--------------------------------------------------------------------------------
+$ ssh -p 2222 -o PreferredAuthentications=password -o PubkeyAuthentication=no \
+    -o BatchMode=yes bastion@127.0.0.1 true
+exit 255   (password authentication refused)
+
+$ ssh -p 2222 -i runtime/admin_test_key -o IdentitiesOnly=yes \
+    -o BatchMode=yes root@127.0.0.1 true
+exit 255   (root login refused)
+
+--------------------------------------------------------------------------------
+4. SESSION AUDIT RECORD
+--------------------------------------------------------------------------------
+$ tail -1 runtime/audit/sessions.jsonl
+{"timestamp":"2026-11-17T19:54:42Z","user":"bastion","source":"172.24.0.1",
+ "action":"command","command":"id -un; echo bastion-ok"}
+
+The hook writes the record before executing the session and denies the session
+if the audit write fails. The file lives on the host audit mount and is ignored.
+
+--------------------------------------------------------------------------------
+5. EFFECTIVE sshd CONFIG
+--------------------------------------------------------------------------------
+$ docker exec cg-bastion /usr/sbin/sshd -T -f /etc/ssh/sshd_config
+exit 0, 83 lines; selected effective values:
+
+  maxauthtries 3
+  maxsessions 4
+  permitrootlogin no
+  pubkeyauthentication yes
+  passwordauthentication no
+  allowtcpforwarding yes
+  forcecommand /usr/local/bin/session-audit
+  loglevel VERBOSE
+  authorizedkeysfile /run/authorized_keys/%u
+  allowusers bastion
+  permitopen *:22
+
+Two Alpine-unsupported Debian directives found during the first start
+(UsePAM, PrintLastLog) were removed; startup is now clean.
+
+The entrypoint stages authorized keys from the read-only host mount into tmpfs
+as root:root 0644. This is required for StrictModes on Windows bind mounts and
+for sshd's privilege-separated child to read the public keys. Key changes need
+a container restart.
+
+--------------------------------------------------------------------------------
+6. CONTAINER POSTURE
+--------------------------------------------------------------------------------
+$ docker inspect cg-bastion --format '...'
+  readonly_rootfs=true
+  cap_drop=[ALL]
+  cap_add=[CAP_CHOWN CAP_SETGID CAP_SETUID CAP_SYS_CHROOT]
+  security_opt=[no-new-privileges:true]
+  pids_limit=128
+  memory=268435456          (256 MiB)
+  nano_cpus=500000000       (0.50 CPU)
+  log=json-file max-size=10m max-file=3
+
+sshd is the root master by design; session processes run as uid 1000 (`bastion`).
+The image is multi-arch (linux/amd64, linux/arm64) but only amd64 was exercised
+on this host.
+
+--------------------------------------------------------------------------------
+7. TCP FORWARDING PATH
+--------------------------------------------------------------------------------
+$ ssh ... -W 127.0.0.1:22 bastion@127.0.0.1
+channel 0: open failed: connect failed: Connection refused
+stdio forwarding failed
+exit 255
+
+The forwarding channel was accepted and sshd attempted the target connection;
+the test container had no listener on port 22, so the connect was refused.
+This is not claimed as an end-to-end proxy test. `PermitOpen *:22` is the
+configured destination restriction; a real private target is required to
+complete the proof in the live stage.
+
+--------------------------------------------------------------------------------
+8. ACCESS POLICY AND JSON
+--------------------------------------------------------------------------------
+$ python -m json.tool configs/whitelist.schema.json >/dev/null
+$ python -m json.tool bastion/access/whitelist.example.json >/dev/null
+(no output; both valid JSON)
+
+$ docker run --rm --entrypoint /bin/sh \
+    -v ".../bastion/access:/work:ro" cloudguard/bastion:local \
+    -c '/work/validate-whitelist.sh /work/whitelist.example.json'
+whitelist valid: /work/whitelist.example.json
+
+The whitelist is a declarative policy; the cloud firewall remains responsible
+for source-CIDR enforcement. sshd enforces the account, key and port-22 limit.
+
+--------------------------------------------------------------------------------
+9. GIT BOUNDARY
+--------------------------------------------------------------------------------
+$ git check-ignore -v .env runtime/host_keys runtime/audit/sessions.jsonl \
+    runtime/admin_test_key
+  .gitignore:9:.env                         .env
+  .gitignore:33:runtime/                    runtime/host_keys
+  .gitignore:33:runtime/                    runtime/audit/sessions.jsonl
+  .gitignore:33:runtime/                    runtime/admin_test_key
+
+Tracked credential/runtime artefacts: none. `.env.example` is placeholder-only
+and is not ignored. runtime/ contains the local test key, host key and audit
+record and is ignored wholesale.
+
+--------------------------------------------------------------------------------
+10. CLOUDGUARD METADATA
+--------------------------------------------------------------------------------
+The local vault row was prepared as:
+
+  slug:            08-bastion-host-jump-server
+  category:        devops_iac
+  framework:       Alpine / OpenSSH
+  has_docker:      1
+  has_iac:         0      (directory reserved; resources arrive in Stage 2)
+  default_port:    2222
+  status:          indexed
+  branch:          main
+  remote:          https://github.com/kaveh8866/Bastion-Host-Jump-Server.git
+
+PORTABLE_CERTIFIED is not claimed at Stage 1. It remains pending the IaC,
+live verification and teardown stages.
+
+================================================================================
+STAGE 1 RESULT: COMPLETE
+Local service: cg-bastion on 127.0.0.1:2222 (healthy)
+Cloud resources: none
+CloudGuard status: indexed (PORTABLE_CERTIFIED pending later stages)
+================================================================================

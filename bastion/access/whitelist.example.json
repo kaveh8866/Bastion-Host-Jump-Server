@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "users": [
+    {
+      "name": "bastion",
+      "public_key": "ssh-ed25519 PLACEHOLDER_PUBLIC_KEY admin@example.invalid",
+      "source_cidrs": ["203.0.113.10/32"],
+      "targets": [
+        {
+          "host": "10.0.0.10",
+          "port": 22,
+          "description": "private application subnet"
+        }
+      ],
+      "max_session_minutes": 60
+    }
+  ]
+}

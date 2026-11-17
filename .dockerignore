@@ -1,0 +1,23 @@
+# The image needs the sshd config, entrypoint and audit hook only.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+runtime
+secrets
+host_keys
+authorized_keys
+audit
+logs
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.jsonl
+terraform
+docs
+tests
+README.md
+LICENSE
+**/*.md

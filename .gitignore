@@ -1,0 +1,74 @@
+# =============================================================================
+# Bastion Host / Jump Server — Git boundary
+# =============================================================================
+# A jump host handles private keys, host keys and command history. None of
+# those may enter Git. Runtime material lives under runtime/ and is ignored
+# wholesale; only placeholders and examples are trackable.
+
+# --- Environment and credentials ---------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.ppk
+secrets/
+keys/
+credentials.json
+*service-account*.json
+application_default_credentials.json
+authorized_keys
+authorized_keys/
+known_hosts
+known_hosts.old
+
+# --- Runtime state (host keys, audit history, sockets) ------------------------
+runtime/
+host_keys/
+host-key*/
+audit/
+*.jsonl
+audit.log
+*.db
+*.sqlite
+*.sqlite3
+data/
+logs/
+*.log
+*.pid
+*.sock
+
+# --- OpenTofu / Terraform ----------------------------------------------------
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+crash.log
+crash.*.log
+tfplan
+*.tfplan
+
+# --- Container scratch -------------------------------------------------------
+docker/docker-compose.override.yml
+docker/*.local.*
+secrets.yaml
+secrets.yml
+
+# --- OS / editor noise -------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
+*.code-workspace
+node_modules/
+dist/

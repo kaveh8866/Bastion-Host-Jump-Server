@@ -1,0 +1,65 @@
+# =============================================================================
+# Bastion Host / Jump Server — annotated sshd policy example
+# =============================================================================
+# This is the operator-facing copy of docker/sshd_config. Keep the effective
+# directives identical when you adapt them; the container tests the runtime
+# copy with `sshd -t` before starting.
+#
+# Threat model: the bastion is reachable only from an administrative CIDR,
+# authenticates a single public key, cannot log in as root, cannot use
+# passwords, cannot open an SFTP subsystem, and can only forward TCP/22.
+
+Port 2222
+AddressFamily inet
+ListenAddress 0.0.0.0
+PidFile /run/sshd.pid
+
+# Generated on first start into the mounted, gitignored runtime directory.
+HostKey /etc/ssh/host_keys/ssh_host_ed25519_key
+
+# --- Authentication ----------------------------------------------------------
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+AuthenticationMethods publickey
+
+# Add a second account only with a matching /etc/ssh/authorized_keys/<user>.
+AllowUsers bastion
+# The entrypoint stages keys into tmpfs with root:root 0600 permissions so
+# StrictModes also holds when the source is a Windows bind mount.
+AuthorizedKeysFile /run/authorized_keys/%u
+StrictModes yes
+
+LoginGraceTime 20
+MaxAuthTries 3
+MaxSessions 4
+MaxStartups 10:30:60
+
+# --- Session and forwarding --------------------------------------------------
+ClientAliveInterval 300
+ClientAliveCountMax 2
+TCPKeepAlive no
+
+AllowAgentForwarding no
+AllowTcpForwarding yes
+# Change this to the exact private destinations the jump host may reach
+# (host:port pairs, comma separated) once the target subnet is known.
+PermitOpen *:22
+PermitListen none
+AllowStreamLocalForwarding no
+GatewayPorts no
+PermitTunnel no
+X11Forwarding no
+PermitTTY yes
+PermitUserEnvironment no
+PrintMotd no
+Banner none
+
+# Structured session record; then exec the requested shell or command.
+ForceCommand /usr/local/bin/session-audit
+
+LogLevel VERBOSE
+
+# No SFTP subsystem: this host forwards sessions, it does not store files.

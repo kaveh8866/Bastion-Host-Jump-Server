@@ -1,0 +1,87 @@
+# =============================================================================
+# Bastion Host / Jump Server — runtime composition
+# =============================================================================
+# Sized for a 1 OCPU / 1 GB Always Free instance. The container is capped at
+# 256 MiB and half a core, which is ample for sshd plus a few sessions and
+# leaves headroom on the smallest shape.
+#
+# Hardening rationale:
+#   read_only            immutable rootfs; host keys and audit records are mounts
+#   cap_drop: ALL        then only the four capabilities sshd needs to separate
+#                        privileges and chroot
+#   no-new-privileges    a setuid binary cannot elevate, even if one appears
+#   pids_limit           a broken session cannot fork-bomb the host
+#   tmpfs /run, /tmp     ephemeral, non-executable, size-bounded
+#   loopback default     public exposure is an explicit operator decision
+#
+#   mkdir -p runtime/host_keys runtime/authorized_keys runtime/audit
+#   cp -n .env.example .env
+#   docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+
+name: cloudguard-bastion
+
+services:
+  bastion:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: cloudguard/bastion:local
+    container_name: cg-bastion
+    restart: unless-stopped
+
+    # --- security posture ---------------------------------------------------
+    read_only: true
+    cap_drop:
+      - ALL
+    cap_add:
+      # sshd starts as root, then drops to the user for the session. These are
+      # the only capabilities required by that transition.
+      - CHOWN
+      - SETGID
+      - SETUID
+      - SYS_CHROOT
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+
+    # --- resource envelope --------------------------------------------------
+    mem_limit: 256m
+    memswap_limit: 256m
+    cpus: 0.50
+
+    tmpfs:
+      - /run:size=16m,mode=0755,nosuid,nodev
+      - /tmp:size=32m,mode=1777,nosuid,nodev
+
+    volumes:
+      # Host keys are generated once and must survive restarts. Never commit
+      # this directory; runtime/ is ignored.
+      - ${BASTION_HOST_KEY_DIR:-../runtime/host_keys}:/etc/ssh/host_keys
+      # One file per account, named after the account (for example `bastion`).
+      - ${BASTION_AUTHORIZED_KEYS_DIR:-../runtime/authorized_keys}:/etc/ssh/authorized_keys:ro
+      # JSONL session records. Host-side permissions decide who can read them.
+      - ${BASTION_AUDIT_DIR:-../runtime/audit}:/var/log/bastion
+
+    environment:
+      BASTION_AUDIT_DIR: /var/log/bastion
+      TZ: ${TZ:-UTC}
+
+    ports:
+      # Loopback by default. For a public bastion, bind 0.0.0.0 only when the
+      # OCI security list/NSG admits 2222/tcp solely from the operator /32.
+      - "${BASTION_SSH_BIND_ADDRESS:-127.0.0.1}:${BASTION_SSH_PORT:-2222}:2222"
+
+    healthcheck:
+      test: ["CMD-SHELL", "ssh-keyscan -t ed25519 -T 2 -p 2222 127.0.0.1 >/dev/null 2>&1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    stop_grace_period: 10s

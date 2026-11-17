@@ -1,0 +1,67 @@
+# =============================================================================
+# Bastion Host / Jump Server — hardened sshd configuration
+# =============================================================================
+# Runtime copy used by the image. The annotated operator copy lives at
+# configs/sshd_config.example; keep the effective directives in sync.
+#
+# Authentication is public-key only. There is no password, no keyboard
+# interactive fallback, no root login and no SFTP subsystem. TCP forwarding is
+# restricted to port 22 so the host can act as a jump server without becoming
+# a general-purpose proxy.
+
+Port 2222
+AddressFamily inet
+ListenAddress 0.0.0.0
+PidFile /run/sshd.pid
+
+# Only the ed25519 host key is generated, on first start, into a writable mount.
+HostKey /etc/ssh/host_keys/ssh_host_ed25519_key
+
+# --- Identity and authentication --------------------------------------------
+PermitRootLogin no
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+AuthenticationMethods publickey
+
+# Only this account may authenticate. Extend deliberately, with a matching
+# authorized_keys file, rather than opening the host to every local account.
+AllowUsers bastion
+# The entrypoint stages keys into tmpfs with root:root 0600 permissions so
+# StrictModes also holds when the source is a Windows bind mount.
+AuthorizedKeysFile /run/authorized_keys/%u
+StrictModes yes
+
+LoginGraceTime 20
+MaxAuthTries 3
+MaxSessions 4
+MaxStartups 10:30:60
+
+# --- Session behaviour -------------------------------------------------------
+ClientAliveInterval 300
+ClientAliveCountMax 2
+TCPKeepAlive no
+
+AllowAgentForwarding no
+AllowTcpForwarding yes
+PermitOpen *:22
+PermitListen none
+AllowStreamLocalForwarding no
+GatewayPorts no
+PermitTunnel no
+X11Forwarding no
+PermitTTY yes
+PermitUserEnvironment no
+PrintMotd no
+Banner none
+
+# The audit hook records the authenticated user, source address, action and
+# command, then execs the shell or the original command. TCP -W forwarding is
+# handled by sshd before ForceCommand and is audited at LogLevel VERBOSE.
+ForceCommand /usr/local/bin/session-audit
+
+# VERBOSE records key fingerprints and connection metadata, never key material.
+LogLevel VERBOSE
+
+# No SFTP subsystem is defined. Enable one only with a documented requirement.
