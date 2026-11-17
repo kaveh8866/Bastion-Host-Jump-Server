@@ -3,7 +3,7 @@
 ![Alpine](https://img.shields.io/badge/base-Alpine%203.23-0D597F?logo=alpine-linux&logoColor=white)
 ![OpenSSH](https://img.shields.io/badge/access-public--key%20only-4E9A06)
 ![Docker](https://img.shields.io/badge/Docker-read--only%20%2B%20cap__drop%20ALL-2496ED?logo=docker&logoColor=white)
-![Stage](https://img.shields.io/badge/stage-5%20%C2%B7%20blocked-red)
+![Stage](https://img.shields.io/badge/stage-6%20%C2%B7%20torn%20down-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A small, hardened SSH jump host for reaching private cloud resources without
@@ -11,13 +11,12 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to the private subnet; password auth, root
 login, SFTP and reverse tunnels are disabled.
 
-**Stage 5 status — blocked before compute:** the OCI VCN, internet gateway,
-route table, public subnet and one-ingress TCP/22 security list were created in
-`eu-frankfurt-1`. Compute creation is blocked: A1.Flex reports **out of host
-capacity** in all three ADs, and the E2.1.Micro fallback returns
-**LimitExceeded**. No instance, public IP, remote Docker stack or live jump
-exists. Stage 4 local tests remain verified; certification is scoped strictly
-to OCI trial credits.
+**Stage 6 status — teardown complete:** the local Compose stack was stopped and
+removed, and the five OCI network resources created in Stage 5 were destroyed.
+A read-only OCI provider query returns zero project VCNs, instances, subnets,
+security lists, gateways and route tables. Stage 5 never created compute, so no
+public IP or live host exists. The repository is ready for final packaging;
+certification remains scoped strictly to OCI trial credits.
 
 ---
 
@@ -167,10 +166,26 @@ Raw transcript: [`docs/stage-4-verification.txt`](docs/stage-4-verification.txt)
 | Compute instance / public IP | **not created / none** |
 | Remote deployment and live checks | **not run** |
 
-No `feat(deploy)` success is claimed. The local state contains the network
-resources only; the operator must free A1 capacity or raise the compute limit
-before retrying. Evidence:
+No `feat(deploy)` success is claimed. Stage 5's network resources were later
+destroyed in Stage 6; the Stage 5 evidence records the original blocker.
 [`docs/stage-5-verification.txt`](docs/stage-5-verification.txt).
+
+---
+
+## Teardown (Stage 6 — complete)
+
+| Check | Result |
+| --- | --- |
+| Local `docker compose down` | `cg-bastion` removed; Compose network removed |
+| Pre-destroy state | five OCI network resources; no compute instance |
+| `tofu destroy -auto-approve` | **5 destroyed**, exit `0` |
+| Post-destroy state | empty; no outputs |
+| OCI project inventory | VCNs, instances, subnets, security lists, gateways, route tables all `[]` |
+| Remote container | not applicable — Stage 5 never created a host |
+
+Zero-resource verification used read-only OCI provider data sources, not a
+visual console check. Unrelated tenancy resources were not touched. Evidence:
+[`docs/stage-6-verification.txt`](docs/stage-6-verification.txt).
 
 ---
 
@@ -281,24 +296,26 @@ Raw transcript: [`docs/stage-1-verification.txt`](docs/stage-1-verification.txt)
 | 3 | Agent playbook, operator prerequisites, OCI certification scope | ✅ complete |
 | 4 | Local stack, SSH auth/jump and session-audit verification | ✅ complete |
 | 5 | Live OCI deployment, host bootstrap, real jump/audit test | ⚠️ blocked — capacity/quota |
-| 6 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
-| 7 | Packaging, cost model, zero-leak audit | not started |
-| 8 | Teardown, provider verification, CloudGuard certification | not started |
+| 6 | Clean teardown, zero-resource verification, staging | ✅ complete |
+| 7 | TLS proxy layer, per-target enforcement, packaging | not started |
+| 8 | Final documentation, provider verification, CloudGuard certification | not started |
 
-CloudGuard vault status after the Stage 5 attempt: **indexed**, `has_iac=1` —
+CloudGuard vault status after Stage 6: **indexed**, `has_iac=1` —
 `PORTABLE_CERTIFIED` remains pending a successful live verification.
 
 ---
 
 ## Honest limits
 
-- Stage 4 and earlier were local only. Stage 5 created the OCI network only; no
-  compute instance, public IP or remote host exists, and no live deployment is
-  claimed. `tofu validate` proves the configuration, not a host.
+- Stage 4 and earlier were local only. Stage 5 created the OCI network, then
+  Stage 6 destroyed it; no compute instance or public host was ever created.
+  The live jump and packet-level CIDR checks remain unverified.
 - The local CIDR test proves Terraform and whitelist policy rejection, not OCI
   security-list packet enforcement; that remains a live-stage check.
 - The A1 capacity and E2 tenancy-limit errors are recorded as blockers; no paid
   shape was substituted and no unrelated tenancy resource was touched.
+- The local Compose container is stopped; its gitignored runtime keys and audit
+  records are retained for reproducibility but are not cloud resources.
 - The host private key is generated under `runtime/host_keys` and is gitignored;
   the administrator private key remains outside the repository in `~/.ssh`.
 - sshd must run as the root master; the container narrows capabilities but does

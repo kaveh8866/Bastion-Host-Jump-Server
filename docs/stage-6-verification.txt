@@ -1,0 +1,159 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 6 — Clean Teardown & Resource Cleanup
+Audit transcript
+Date: 2026-11-17
+Region: eu-frankfurt-1
+Operator: local OCI profile / gitignored tfvars
+================================================================================
+
+RESULT
+------
+The local Compose stack was stopped and removed cleanly. The five OCI network
+resources created in Stage 5 were destroyed. A read-only OCI provider query
+returned zero project-named VCNs, instances, subnets, security lists, internet
+gateways and route tables.
+
+Stage 5 never created a compute instance, so there was no remote Docker
+container, public IP or live host to stop. No remote shutdown is claimed.
+
+--------------------------------------------------------------------------------
+1. PRE-TEARDOWN HEALTH AND STATE
+--------------------------------------------------------------------------------
+Local container before teardown:
+
+  cg-bastion | Up 11 minutes (healthy) | 127.0.0.1:2222->2222/tcp
+
+  $ tofu state list
+  module.compute.data.oci_core_images.ubuntu[0]
+  module.compute.data.oci_identity_availability_domains.ads
+  module.network.oci_core_internet_gateway.this
+  module.network.oci_core_route_table.public
+  module.network.oci_core_security_list.public
+  module.network.oci_core_subnet.public
+  module.network.oci_core_vcn.this
+
+`terraform.tfstate` existed (24,851 bytes) and tracked the five network
+resources. No `oci_core_instance` resource was present. The remote container
+check is not applicable: Stage 5 failed before compute creation.
+
+--------------------------------------------------------------------------------
+2. LOCAL COMPOSE STOP
+--------------------------------------------------------------------------------
+  $ docker compose --env-file .env -f docker/docker-compose.yml down
+  Container cg-bastion Stopping
+  Container cg-bastion Stopped
+  Container cg-bastion Removing
+  Container cg-bastion Removed
+  Network cloudguard-bastion_default Removing
+  Network cloudguard-bastion_default Removed
+
+Post-down:
+
+  $ docker compose ... ps
+  (no rows)
+
+  $ docker ps -a --filter name=cg-bastion
+  (no rows)
+
+The OCI state was unchanged by the local Compose stop; this is the expected
+separation between local runtime material and cloud infrastructure.
+
+--------------------------------------------------------------------------------
+3. OPENTOFU DESTROY
+--------------------------------------------------------------------------------
+  $ cd terraform
+  $ tofu destroy -auto-approve -input=false -no-color
+  Plan: 0 to add, 0 to change, 5 to destroy.
+
+  module.network.oci_core_subnet.public: Destruction complete
+  module.network.oci_core_route_table.public: Destruction complete
+  module.network.oci_core_security_list.public: Destruction complete
+  module.network.oci_core_internet_gateway.this: Destruction complete
+  module.network.oci_core_vcn.this: Destruction complete
+
+  Destroy complete! Resources: 5 destroyed.
+  destroy_exit=0
+
+No compute instance was listed for destruction because none had been created.
+
+--------------------------------------------------------------------------------
+4. POST-DESTROY STATE
+--------------------------------------------------------------------------------
+  $ tofu state list
+  (empty; exit 0)
+
+  $ tofu output
+  Warning: No outputs found
+
+  terraform.tfstate: 2,354 bytes, empty state (version/serial metadata only)
+
+The empty state is retained locally for a clean future plan; it is gitignored.
+
+--------------------------------------------------------------------------------
+5. ZERO-RESOURCE OCI VERIFICATION
+--------------------------------------------------------------------------------
+A temporary read-only OpenTofu configuration used the same OCI provider/profile
+and data sources to query the tenancy root compartment. It created no real
+infrastructure:
+
+  $ tofu apply ... (data sources only)
+  Apply complete! Resources: 0 added, 0 changed, 0 destroyed.
+
+Project-named results:
+
+  project_vcns           = []
+  project_instances      = []
+  project_subnets        = []
+  project_security_lists = []
+  project_gateways       = []
+  project_route_tables   = []
+
+The query matched the exact Stage 5 display names:
+
+  cloudguard-bastion-dev-vcn
+  cloudguard-bastion-dev-vm
+  cloudguard-bastion-dev-public-subnet
+  cloudguard-bastion-dev-sl
+  cloudguard-bastion-dev-igw
+  cloudguard-bastion-dev-public-rt
+
+No OCI CLI is installed on this workstation; this was a real read-only provider
+API query, not a console-only visual check. It does not enumerate unrelated
+tenancy resources, which were not touched.
+
+The temporary inventory configuration/state/provider-schema files were removed
+from `runtime/`. The project's normal `terraform/terraform.tfstate` remains the
+empty state file.
+
+--------------------------------------------------------------------------------
+6. WHAT REMAINS / LIMITS
+--------------------------------------------------------------------------------
+- The local project directory, ignored `.env`, test runtime keys/audit records,
+  and local tfvars/state remain for reproducibility; none is in Git.
+- The local `cg-bastion` container is gone. It can be recreated with
+  `docker compose ... up -d --build` after the stack is needed again.
+- There is no live OCI host, public IP, remote stack, or live SSH/audit evidence
+  because Stage 5 was blocked on compute capacity/quota before instance launch.
+- Project-specific cloud resources are zero. This report does not claim that
+  unrelated resources in the tenancy are zero, nor does it claim the whole
+  account's spend rate is zero.
+- No `destroy` was run against unrelated compartments or resources.
+
+--------------------------------------------------------------------------------
+7. GIT / CLEANUP BOUNDARY
+--------------------------------------------------------------------------------
+  - `terraform.tfvars` ignored;
+  - `terraform.tfstate` and plan files ignored;
+  - `runtime/` ignored;
+  - no OCI private key, OCID, plan, log, or state staged;
+  - no `feat(deploy)` claim is made;
+  - docs commit: `chore(teardown): destroy OCI infrastructure and verify zero-resource burn rate`.
+
+================================================================================
+STAGE 6 RESULT: COMPLETE
+Local stack stopped; 5 OCI network resources destroyed; main state empty;
+project-named OCI inventory returned zero in every resource category.
+Ready for final packaging/documentation, with Stage 5's live-host limitation
+still recorded.
+================================================================================
