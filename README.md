@@ -17,7 +17,8 @@ is on `main`, the remote is configured, the MIT license is present, and the
 release is tagged `v1.0.0`. The Stage 5 retry on 2026-11-17 successfully created
 the OCI host and completed live SSH, audit, jump and port-restriction checks.
 Local Stage 4 verification and the Stage 6 teardown of the earlier attempt
-remain valid; the final CloudGuard vault audit is recorded below.
+remain valid. The official CloudGuard audit passed **5/5** and recorded
+**`PORTABLE_CERTIFIED` — 100/100** on 2026-11-17.
 
 ---
 
@@ -282,9 +283,9 @@ GCP are ports, not certified targets.
 In short: final production verification and testing certification are performed
 strictly on OCI using trial credits; no AWS or GCP certification run is claimed.
 
-**Current certification status:** live OCI verification is complete; the
-CloudGuard vault audit is the authoritative final status. No AWS or GCP
-certification run is claimed.
+**Current certification status:** **`PORTABLE_CERTIFIED` — 100/100 (5/5
+checks)**, audited 2026-11-17 by the CloudGuard portability audit. Live OCI
+verification is complete. No AWS or GCP certification run is claimed.
 
 ### AWS migration tips
 
@@ -429,7 +430,7 @@ allowance in the provider calculator before budgeting.
 | 5 | Live OCI deployment | ✅ complete — retry 2026-11-17 | `docs/stage-5-retry-verification.txt` |
 | 6 | Earlier-attempt teardown and zero-resource verification | ✅ complete | `docs/stage-6-verification.txt` |
 | 7 | Security audit, README and cost model | ✅ complete | `docs/stage-7-verification.txt` |
-| 8 | Git finalization, MIT license, release commit, push and `v1.0.0` | ✅ packaged | origin/`main` + tag |
+| 8 | Git finalization, MIT license, release commit, push and `v1.0.0` | ✅ released + certified | origin/`main`, tag, vault 5/5 |
 
 Local Stage 4 results: valid key login succeeded; missing, invalid and root
 attempts returned SSH exit `255`; a disposable target was reached through an
@@ -453,11 +454,25 @@ written only by the CloudGuard portability audit, not by this document.
 | Branch | `main` |
 | License | MIT — Copyright (c) 2026 Mostafa Kaveh |
 | Tag | `v1.0.0` |
-| Certification | **Live OCI checks passed; CloudGuard vault audit pending** |
+| Certification | **`PORTABLE_CERTIFIED` — 100/100 (5/5 checks), audited 2026-11-17** |
 
 The tag is a code/documentation release. Live host evidence is recorded in
-`docs/stage-5-retry-verification.txt`; certification status is owned by the
-CloudGuard vault audit.
+`docs/stage-5-retry-verification.txt`; the persisted CloudGuard audit is the
+authoritative certification record.
+
+### CloudGuard portability audit
+
+The official audit result for this repository:
+
+| Check | Result |
+| --- | --- |
+| Zero-leak audit | ✅ passed |
+| Environment scaffold | ✅ passed |
+| Documentation integrity | ✅ passed |
+| Git isolation | ✅ passed |
+| Containerization readiness | ✅ passed |
+
+Score: **100/100** · Status: **`PORTABLE_CERTIFIED`** · Audited: 2026-11-17
 
 ---
 
