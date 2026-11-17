@@ -1,0 +1,267 @@
+================================================================================
+Project 08 — Bastion Host / Jump Server
+Stage 4 — Local Testing & Verification
+Evidence transcript
+Date: 2026-11-17
+Host: Windows 11 + Git Bash, Docker Desktop
+Scope: local Docker stack only. No OCI resource was planned, applied or changed.
+================================================================================
+
+TEST COVERAGE
+-------------
+1. Compose build/up and container health.
+2. SSH public-key authentication with a disposable key pair.
+3. Rejection of missing, invalid and root credentials.
+4. End-to-end SSH jump through the bastion to a disposable target.
+5. Refusal of TCP forwarding to a target port other than 22.
+6. JSONL audit records for command and interactive-shell sessions.
+7. Log and storage scans for private-key material.
+8. CIDR policy rejection in Terraform and the whitelist validator.
+9. Cleanup of the disposable target; the bastion remains running locally.
+
+NOT EXECUTED IN THIS STAGE
+--------------------------
+- No OCI plan/apply/destroy and no live security-list test.
+- No live private-subnet target; the target below was a disposable Docker
+  container on the bastion's own network.
+- No claim of production certification; that remains a later stage.
+
+--------------------------------------------------------------------------------
+1. STACK STARTUP
+--------------------------------------------------------------------------------
+The project `.env` was absent. It was created from the tracked template:
+
+  $ cp -n .env.example .env
+  $ chmod 600 .env                 # Windows Git Bash reports 644; see limits
+  $ docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+  Image cloudguard/bastion:local Built
+  Container cg-bastion Running
+
+  $ docker compose --env-file .env -f docker/docker-compose.yml ps
+  cg-bastion ... Up (healthy) 127.0.0.1:2222->2222/tcp
+
+  $ docker port cg-bastion
+  2222/tcp -> 127.0.0.1:2222
+
+Startup log:
+
+  bastion: starting sshd on 0.0.0.0:2222
+  Server listening on 0.0.0.0 port 2222.
+
+The entrypoint generated/loaded the ed25519 host key in the ignored
+runtime/host_keys mount and validated sshd with `sshd -t` before exec.
+
+Effective policy selected from `sshd -T`:
+
+  permitrootlogin no
+  pubkeyauthentication yes
+  passwordauthentication no
+  kbdinteractiveauthentication no
+  allowtcpforwarding yes
+  forcecommand /usr/local/bin/session-audit
+  authorizedkeysfile /run/authorized_keys/%u
+  allowusers bastion
+  permitopen *:22
+
+--------------------------------------------------------------------------------
+2. KEY INJECTION AND AUTHENTICATION MATRIX
+--------------------------------------------------------------------------------
+A disposable ed25519 key pair was generated outside the repository in
+`~/.ssh`, and only its public half was copied to
+`runtime/authorized_keys/bastion` (mode 0644), then the container was restarted
+so the entrypoint re-staged it. The public fingerprint was visible in the
+container as:
+
+  256 SHA256:r0jshUu9DBiuXERENRUuOHIavswuoLrHu5ZJp5s5xYw stage4-local-admin
+  (ED25519)
+
+The private half was never copied into the repository, runtime/ or the image.
+
+| Case | Command/identity | Result | Exit |
+| --- | --- | --- | --- |
+| Valid key, command | `ssh -p 2222 -i ~/.ssh/bastion_admin bastion@127.0.0.1 'id -un; echo stage4-ok'` | `bastion`, `stage4-ok` | `0` |
+| Missing key | nonexistent identity, BatchMode | `Permission denied (publickey)` | `255` |
+| Invalid key | second ed25519 key not in authorized_keys | `Permission denied (publickey)` | `255` |
+| Root with valid key | `root@127.0.0.1`, valid operator key | `Permission denied (publickey)` | `255` |
+
+Selected sshd log evidence:
+
+  Accepted publickey for bastion ... ED25519 SHA256:r0jsh...
+  Starting session: forced-command (config) '/usr/local/bin/session-audit'
+    for bastion ...
+  Failed publickey for bastion ... ED25519 SHA256:9UgM...
+  Connection closed by invalid user root ... [preauth]
+
+No password or keyboard-interactive fallback is available (`sshd -T` above).
+
+--------------------------------------------------------------------------------
+3. END-TO-END JUMP AND PORT RESTRICTION
+--------------------------------------------------------------------------------
+A disposable Alpine SSH target was started on `cloudguard-bastion_default`,
+with a test account and the same public key. It was used only for this test and
+removed afterwards.
+
+  $ ssh -o "ProxyCommand=ssh -p 2222 -i $HOME/.ssh/bastion_admin \
+      -o IdentitiesOnly=yes -o BatchMode=yes -W %h:%p bastion@127.0.0.1" \
+      -i ~/.ssh/bastion_admin -o IdentitiesOnly=yes -o BatchMode=yes \
+      target@cg-stage4-target 'id -un; echo stage4-jump-ok'
+
+  target
+  stage4-jump-ok
+  exit=0
+
+Target sshd log:
+
+  Accepted publickey for target from 172.24.0.2 port 50924
+    ssh2: ED25519 SHA256:r0jsh...
+  Connection closed by 172.24.0.2 port 50924
+
+The source `172.24.0.2` is the bastion container on the Docker bridge; the
+target is reached through the bastion channel, not directly by the workstation.
+
+Port restriction:
+
+  $ ssh -p 2222 -i ~/.ssh/bastion_admin -W cg-stage4-target:23 \
+      bastion@127.0.0.1 </dev/null
+  channel 0: open failed: administratively prohibited: open failed
+  stdio forwarding failed
+  exit=255
+
+This confirms `PermitOpen *:22` rejects a target port other than 22. A plain
+`ssh -J bastion@127.0.0.1:2222 ...` attempt failed at the bastion because the
+identity was not inherited by the implicit proxy command. It is recorded as a
+failed attempt, not a successful jump; the explicit ProxyCommand above is the
+successful path.
+
+--------------------------------------------------------------------------------
+4. SESSION AUDIT
+--------------------------------------------------------------------------------
+`runtime/audit/sessions.jsonl` contained three records after the tests:
+
+  {"timestamp":"2026-11-17T19:54:42Z","user":"bastion",
+   "source":"172.24.0.1","action":"command",
+   "command":"id -un; echo bastion-ok"}
+  {"timestamp":"2026-11-17T20:09:48Z","user":"bastion",
+   "source":"172.24.0.1","action":"command",
+   "command":"id -un; echo stage4-ok"}
+  {"timestamp":"2026-11-17T20:10:07Z","user":"bastion",
+   "source":"172.24.0.1","action":"shell","command":""}
+
+Parsed from the container as the unprivileged audit owner:
+
+  $ MSYS_NO_PATHCONV=1 docker exec --user 1000 cg-bastion \
+      jq -r '[.timestamp,.user,.source,.action,.command] | @tsv' \
+      /var/log/bastion/sessions.jsonl
+  2026-11-17T19:54:42Z  bastion  172.24.0.1  command  id -un; echo bastion-ok
+  2026-11-17T20:09:48Z  bastion  172.24.0.1  command  id -un; echo stage4-ok
+  2026-11-17T20:10:07Z  bastion  172.24.0.1  shell
+
+Inside the container the audit file was mode 600, owner `1000:1000`, 367 bytes.
+Root `docker exec` could not read it (permission denied); parsing as uid 1000
+succeeded. The host mount is gitignored.
+
+The source is the Docker bridge gateway because port publishing NATs the
+connection. True client-IP attribution requires host networking or a proxy that
+forwards the peer; this remains a documented limitation.
+
+--------------------------------------------------------------------------------
+5. CIDR / SOURCE POLICY
+--------------------------------------------------------------------------------
+Terraform variable validation was exercised through `tofu console` with a
+temporary ignored tfvars file:
+
+  allowed_ssh_cidr = "0.0.0.0/0"
+
+Output included:
+
+  allowed_ssh_cidr must be a specific IPv4 CIDR (for example
+  203.0.113.10/32), never 0.0.0.0/0.
+  This was checked by the validation rule at variables.tf:142,3-13.
+
+Note: `tofu console` prints the validation error but still returns exit 0, so
+the printed diagnostic is the evidence; it is not presented as a nonzero test.
+
+A specific `/32` control (`203.0.113.10/32`) printed the value without an error.
+
+The whitelist validator was run inside the image (host jq is unavailable):
+
+| Policy input | Result | Exit |
+| --- | --- | --- |
+| `source_cidrs: ["0.0.0.0/0"]` | `whitelist invalid: ...` | `1` |
+| `source_cidrs: ["999.1.1.1/32"]` | `whitelist invalid: ...` | `1` |
+| `bastion/access/whitelist.example.json` | `whitelist valid: ...` | `0` |
+
+The world-open and malformed-octet cases initially passed the old validator;
+both were fixed during this stage (section 7). The local test does not exercise
+an OCI security list. Packet-level source-CIDR enforcement is a live-stage
+check.
+
+A `tofu plan` attempt with the invalid CIDR and placeholder credentials hit
+unrelated provider data-source errors before plan evaluation and was not used
+as evidence for CIDR rejection.
+
+--------------------------------------------------------------------------------
+6. LEAK / STORAGE SCAN
+--------------------------------------------------------------------------------
+  docker logs cg-bastion | grep -E 'BEGIN .*PRIVATE KEY|PRIVATE KEY-----'
+  -> no private-key block
+
+  git grep -nE 'BEGIN .*PRIVATE KEY|PRIVATE KEY-----' -- .
+  -> no private-key block in tracked files
+
+  grep -E 'BEGIN .*PRIVATE KEY|PRIVATE KEY-----' \
+    runtime/audit/sessions.jsonl
+  -> no private-key block in audit records
+
+  git check-ignore -v .env runtime/audit/sessions.jsonl \
+    runtime/host_keys/ssh_host_ed25519_key runtime/authorized_keys/bastion
+  -> all four match ignore rules
+
+The disposable administrator private key is in `~/.ssh`, outside the
+repository. The private SSH host key is intentionally generated under
+`runtime/host_keys` (gitignored) so the container can authenticate itself
+across restarts; it is not an administrator credential and never appears in
+logs or Git.
+
+Windows note: Git Bash reports the host mount files as 0644 even after chmod;
+NTFS ACLs, not POSIX mode, are the effective local control. `.env` contains
+only the template placeholder values in this stage. Put real values only on a
+host with a restrictive ACL and keep them out of Git.
+
+--------------------------------------------------------------------------------
+7. ADJUSTMENTS MADE FROM TEST FINDINGS
+--------------------------------------------------------------------------------
+- `bastion/access/validate-whitelist.sh` now rejects `0.0.0.0/0` explicitly and
+  validates each IPv4 octet as 0-255. Invalid input exits 1 with a stderr
+  message instead of silently passing.
+- `configs/whitelist.schema.json` now carries the same octet-aware pattern and
+  a `not: { const: "0.0.0.0/0" }` guard.
+- `docker/sshd_config` and `configs/sshd_config.example` corrected the key
+  staging comment from `0600` to the actual `0644` used for the public key.
+- `MANUAL_PREREQS.md` now marks host `jq` as required for the whitelist
+  validator rather than optional.
+- README/AGENT_GUIDE/MANUAL_PREREQS stage references were aligned with Stage 4
+  (local testing) and Stage 5 (live OCI).
+
+--------------------------------------------------------------------------------
+8. CLEANUP
+--------------------------------------------------------------------------------
+  docker rm -f cg-stage4-target
+  -> removed; no test target remains
+
+  docker compose ... ps
+  -> cg-bastion remains Up (healthy), 127.0.0.1:2222->2222/tcp
+
+Temporary tfvars/whitelist files were removed from runtime/. The disposable
+administrator private key remains only in `~/.ssh` for local reuse; the
+invalid-key test pair was removed. Runtime public key and audit record remain
+in the ignored mount.
+
+No OCI resource was created, changed or destroyed. No remote push was made.
+
+================================================================================
+STAGE 4 RESULT: COMPLETE
+Local container, key authentication, end-to-end SSH jump, port restriction,
+session audit and policy rejection verified. Live OCI CIDR enforcement remains
+for Stage 5.
+================================================================================

@@ -12,7 +12,7 @@ and JSONL session records persisted on the host.
 mappings are documented in `terraform/README.md`), but **final production
 verification and testing certification are performed strictly on Oracle Cloud
 Infrastructure (OCI) using trial credits**. AWS and GCP are ports, not certified
-targets. As of Stage 3, no cloud deployment has executed; this checklist
+targets. As of Stage 4, no cloud deployment has executed; this checklist
 prepares one and does not claim it happened.
 
 ---
@@ -44,7 +44,7 @@ prepares one and does not claim it happened.
 | OpenSSH client | any current release | `ssh -V` |
 | OpenTofu | 1.6+ (workspace ships 1.13.9) | `"$TOFU" version` |
 | curl | any | `curl --version` |
-| jq (optional on host) | any | `jq --version` (image has jq regardless) |
+| jq | any | `jq --version` (required by the host whitelist validator; the image also ships jq) |
 
 OpenTofu is not on `PATH` in this workspace:
 
@@ -263,10 +263,10 @@ All boxes are required before an apply:
 
 ---
 
-## Phase 8 — Deployment-day sequence (later stage; not run in Stage 3)
+## Phase 8 — Deployment-day sequence (later stage; not run in Stage 4)
 
 This phase is intentionally documented but **not executed** here. A deployment
-stage must record live evidence; Stage 3 does not claim it.
+stage must record live evidence; Stage 4 does not claim it.
 
 ```bash
 cd terraform
@@ -353,7 +353,6 @@ cd terraform
 - In short: final production verification and testing certification are
   performed strictly on OCI using trial credits; no AWS or GCP certification
   run is claimed.
-- Stage 3 is documentation plus locally validated configuration. No OCI
-  resource has been planned, applied or destroyed, and no live host, live jump
-  or production certification is claimed. Live evidence belongs to the
-  deployment stage.
+- Stages 3–4 are documentation plus local validation. No OCI resource has been
+  planned, applied or destroyed, and no live host, live jump or production
+  certification is claimed. Live evidence belongs to the deployment stage.

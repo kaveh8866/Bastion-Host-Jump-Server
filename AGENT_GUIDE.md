@@ -12,7 +12,7 @@ dedicated deployment stage.
 **Certification scope:** the container and IaC are cloud-agnostic, with AWS and
 GCP mappings documented. **Final production verification and testing
 certification are performed strictly on Oracle Cloud Infrastructure (OCI) using
-trial credits.** AWS and GCP are ports, not certified targets. As of Stage 3 no
+trial credits.** AWS and GCP are ports, not certified targets. As of Stage 4 no
 cloud deployment has run, so no live host is claimed.
 
 ---
@@ -35,7 +35,7 @@ These hold for every action, including exploratory ones.
    permission, mount or config instead. `StrictModes`, `cap_drop`, read-only
    rootfs and the security list are not optional.
 6. **Report unverified work as unverified.** A passing build or `sshd -T` does
-   not prove a live private-target jump; Stage 3 makes no cloud claim.
+   not prove a live private-target jump; Stage 4 makes no cloud claim.
 
 ---
 
@@ -321,7 +321,7 @@ ssh -p 2222 -o PreferredAuthentications=password -o PubkeyAuthentication=no \
 ssh -p 2222 -i ~/.ssh/bastion_admin -o IdentitiesOnly=yes \
   -o BatchMode=yes root@127.0.0.1 true; echo "root_exit=$?"
 
-# Whitelist policy
+# Whitelist policy (requires jq on the host; the image also ships jq)
 ./bastion/access/validate-whitelist.sh bastion/access/whitelist.example.json
 
 # IaC
@@ -383,7 +383,7 @@ stage. Never `tofu apply` while working on documentation.
 - In short: final production verification and testing certification are
   performed strictly on OCI using trial credits; no AWS or GCP certification
   run is claimed.
-- As of Stage 3, **no OCI resource has been planned, applied or destroyed**;
+- As of Stage 4, **no OCI resource has been planned, applied or destroyed**;
   Stage 1 was local, Stage 2 was `tofu validate`, and this stage is
   documentation. No live host, live jump or production certification is
   claimed. Those claims require the deployment stage's recorded evidence.

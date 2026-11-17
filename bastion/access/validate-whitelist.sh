@@ -10,7 +10,7 @@ set -eu
 file="${1:-$(dirname "$0")/whitelist.example.json}"
 [ -r "$file" ] || { echo "whitelist not readable: $file" >&2; exit 2; }
 
-jq -e '
+if ! jq -e '
   .version == 1 and
   (.users | type == "array" and length > 0) and
   all(.users[];
@@ -18,7 +18,8 @@ jq -e '
     (.public_key | type == "string" and startswith("ssh-")) and
     (.source_cidrs | type == "array" and length > 0) and
     all(.source_cidrs[];
-      test("^([0-9]{1,3}\\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$")
+      test("^((25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])\\.){3}(25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])/([0-9]|[12][0-9]|3[0-2])$") and
+      . != "0.0.0.0/0"
     ) and
     (.targets | type == "array" and length > 0) and
     all(.targets[];
@@ -26,6 +27,9 @@ jq -e '
       (.port | type == "number" and . >= 1 and . <= 65535)
     )
   )
-' "$file" >/dev/null
+' "$file" >/dev/null; then
+  echo "whitelist invalid: $file (schema or source CIDR rejected)" >&2
+  exit 1
+fi
 
 echo "whitelist valid: $file"

@@ -114,4 +114,4 @@ Success! The configuration is valid.
 
 `tofu init -backend=false` completed and generated `.terraform.lock.hcl`.
 `tofu plan` was not run: Stage 2 is the IaC contract, and no OCI resources or
-credentials were used to create them. Live plan/apply belongs to Stage 3.
+credentials were used to create them. Live plan/apply belongs to Stage 5.

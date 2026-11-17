@@ -3,7 +3,7 @@
 ![Alpine](https://img.shields.io/badge/base-Alpine%203.23-0D597F?logo=alpine-linux&logoColor=white)
 ![OpenSSH](https://img.shields.io/badge/access-public--key%20only-4E9A06)
 ![Docker](https://img.shields.io/badge/Docker-read--only%20%2B%20cap__drop%20ALL-2496ED?logo=docker&logoColor=white)
-![Stage](https://img.shields.io/badge/stage-3%20%C2%B7%20documented-blue)
+![Stage](https://img.shields.io/badge/stage-4%20%C2%B7%20locally%20tested-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A small, hardened SSH jump host for reaching private cloud resources without
@@ -11,11 +11,12 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to the private subnet; password auth, root
 login, SFTP and reverse tunnels are disabled.
 
-**Stage 3 status:** the agent playbook and operator prerequisites are complete,
-the OpenTofu OCI network/compute contract validates, and Stage 1's container
-remains locally verified (healthy, key-only login, JSONL command audit). No OCI
-resource has been created or applied; live plan/apply belongs to Stage 4, and
-TLS proxying is later. Certification is scoped strictly to OCI trial credits.
+**Stage 4 status:** the local stack, key-only authentication, SSH jump path and
+JSONL session audit have been exercised successfully. Missing, invalid and root
+keys are refused; forwarding to a non-22 target port is denied; the whitelist
+validator now rejects world-open and malformed CIDRs. No OCI resource has been
+created or applied; live plan/apply belongs to Stage 5, and TLS proxying is
+later. Certification is scoped strictly to OCI trial credits.
 
 ---
 
@@ -131,6 +132,28 @@ and local validation; no live deployment is claimed.
 
 ---
 
+## Local verification (Stage 4)
+
+| Check | Result |
+| --- | --- |
+| Compose build/up | image built; `cg-bastion` healthy on `127.0.0.1:2222` |
+| Startup | `sshd` listening on `0.0.0.0:2222`; `ForceCommand` hooked |
+| Valid key | command exit `0`, output `bastion` / `stage4-ok` |
+| Missing key | refused, exit `255` |
+| Invalid key | refused, exit `255` |
+| Root with valid key | refused, exit `255` |
+| End-to-end jump | disposable target reached through the bastion, exit `0` |
+| Disallowed port | forwarding to target port 23 denied, exit `255` |
+| Audit | command and shell records present with user, source and timestamp |
+| Leak scan | no private-key block in logs, tracked files or audit records |
+| CIDR policy | Terraform rejects `0.0.0.0/0`; whitelist rejects world-open and malformed CIDRs |
+
+Local CIDR checks validate policy. The OCI security-list packet filter is not
+running locally, so an external source-CIDR test belongs to the live stage.
+Raw transcript: [`docs/stage-4-verification.txt`](docs/stage-4-verification.txt).
+
+---
+
 ## Access policy
 
 `bastion/access/whitelist.example.json` describes the administrative identity,
@@ -236,21 +259,26 @@ Raw transcript: [`docs/stage-1-verification.txt`](docs/stage-1-verification.txt)
 | 1 | Scaffold, container, SSH/audit policy, zero-leak boundary, local verification | ✅ complete |
 | 2 | OpenTofu OCI VCN, security list, compute and bastion host | ✅ validated |
 | 3 | Agent playbook, operator prerequisites, OCI certification scope | ✅ complete |
-| 4 | Live OCI deployment, host bootstrap, real jump/audit test | not started |
-| 5 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
-| 6 | Packaging, cost model, zero-leak audit | not started |
-| 7 | Teardown, provider verification, CloudGuard certification | not started |
+| 4 | Local stack, SSH auth/jump and session-audit verification | ✅ complete |
+| 5 | Live OCI deployment, host bootstrap, real jump/audit test | not started |
+| 6 | TLS proxy layer, per-target enforcement, central audit shipping | not started |
+| 7 | Packaging, cost model, zero-leak audit | not started |
+| 8 | Teardown, provider verification, CloudGuard certification | not started |
 
-CloudGuard vault status after Stage 3: **indexed**, `has_iac=1` —
+CloudGuard vault status after Stage 4: **indexed**, `has_iac=1` —
 `PORTABLE_CERTIFIED` remains pending the later verification stages.
 
 ---
 
 ## Honest limits
 
-- Stages 1–3 are local only. Nothing in this repository creates or verifies a
+- Stages 1–4 are local only. Nothing in this repository creates or verifies a
   cloud resource, and no live deployment is claimed; `tofu validate` proves the
   configuration, not a host.
+- The local CIDR test proves Terraform and whitelist policy rejection, not OCI
+  security-list packet enforcement; that requires the live stage.
+- The host private key is generated under `runtime/host_keys` and is gitignored;
+  the administrator private key remains outside the repository in `~/.ssh`.
 - sshd must run as the root master; the container narrows capabilities but does
   not run the daemon as an unprivileged user. Session processes run as uid 1000.
 - `ForceCommand` audits interactive and command sessions. OpenSSH handles

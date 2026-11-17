@@ -28,7 +28,7 @@ AuthenticationMethods publickey
 # Only this account may authenticate. Extend deliberately, with a matching
 # authorized_keys file, rather than opening the host to every local account.
 AllowUsers bastion
-# The entrypoint stages keys into tmpfs with root:root 0600 permissions so
+# The entrypoint stages keys into tmpfs with root:root 0644 permissions so
 # StrictModes also holds when the source is a Windows bind mount.
 AuthorizedKeysFile /run/authorized_keys/%u
 StrictModes yes
