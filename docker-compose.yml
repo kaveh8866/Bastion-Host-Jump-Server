@@ -1,0 +1,22 @@
+# =============================================================================
+# Root Compose entrypoint — CloudGuard / repository tooling
+# =============================================================================
+# The canonical service, hardening flags and mounts live in
+# docker/docker-compose.yml. This thin root file lets a reviewer or the
+# CloudGuard portability audit discover and run the project from its root
+# without duplicating the service definition.
+#
+# Use the canonical file for the documented local workflow:
+#   docker compose --env-file .env -f docker/docker-compose.yml up -d --build
+#
+# This entrypoint is equivalent:
+#   docker compose --env-file .env up -d --build
+
+name: cloudguard-bastion
+
+services:
+  bastion:
+    extends:
+      file: docker/docker-compose.yml
+      service: bastion
+    image: cloudguard/bastion:local

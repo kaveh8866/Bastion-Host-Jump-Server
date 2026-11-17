@@ -120,6 +120,10 @@ loopback-bound on 2222. Do not change `BASTION_SSH_BIND_ADDRESS` to `0.0.0.0`
 unless the cloud firewall explicitly admits the mapped port; the default
 Terraform perimeter admits only 22.
 
+The repository root also has a thin `docker-compose.yml` that extends the
+canonical service definition for portfolio discovery; both entrypoints resolve
+the same `runtime/` mounts.
+
 Stop the local stack without deleting runtime material:
 
 ```bash
@@ -389,6 +393,7 @@ allowance in the provider calculator before budgeting.
 
 ```text
 .
+├── docker-compose.yml          Root entrypoint extending docker/docker-compose.yml
 ├── docker/
 │   ├── Dockerfile              Alpine/OpenSSH runtime; no host keys baked in
 │   ├── docker-compose.yml      hardening flags, mounts, limits, log rotation
