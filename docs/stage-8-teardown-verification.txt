@@ -1,0 +1,108 @@
+Project 08 — Bastion Host / Jump Server
+Stage 8 — final teardown verification (post-certification)
+Date: 2026-11-18
+Region: eu-frankfurt-1 (AD-1)
+Tool: OpenTofu 1.13.9
+Scope: retire the live, PORTABLE_CERTIFIED stack to avoid idle spend and drift
+       before Project 09. No repository content, certification record or
+       verification evidence was removed by the teardown.
+
+1. Pre-teardown state
+---------------------
+`tofu state list` returned six managed resources plus four data sources:
+
+  module.compute.oci_core_instance.this          (managed)
+  module.network.oci_core_vcn.this               (managed)
+  module.network.oci_core_internet_gateway.this  (managed)
+  module.network.oci_core_route_table.public     (managed)
+  module.network.oci_core_security_list.public   (managed)
+  module.network.oci_core_subnet.public          (managed)
+  module.compute.data.oci_core_images.ubuntu[0]  (data)
+  module.compute.data.oci_core_vnic.primary      (data)
+  module.compute.data.oci_core_vnic_attachments.this (data)
+  module.compute.data.oci_identity_availability_domains.ads (data)
+
+The instance was `cloudguard-bastion-dev-vm`, VM.Standard.A1.Flex,
+1 OCPU / 6 GB, public 132.145.249.219, private 10.8.1.34, with a single
+TCP/22 ingress from the operator /32.
+
+2. Destroy execution
+--------------------
+Command (from terraform/):
+
+  tofu destroy -auto-approve -input=false
+
+Observed order and result:
+
+  module.compute.oci_core_instance.this          destroyed after 1m3s
+  module.network.oci_core_subnet.public          destroyed after 1s
+  module.network.oci_core_route_table.public     destroyed after 0s
+  module.network.oci_core_security_list.public   destroyed after 0s
+  module.network.oci_core_internet_gateway.this  destroyed after 1s
+  module.network.oci_core_vcn.this               destroyed after 0s
+
+  Destroy complete! Resources: 6 destroyed.
+  Process exit status: 0
+
+3. Post-teardown verification
+-----------------------------
+a) Terraform state is empty
+
+   tofu state list   ->  no output (zero managed resources)
+
+b) No residual resources are planned from state
+
+   tofu plan -detailed-exitcode
+   exit status 2 (changes pending because nothing is deployed)
+   plan summary: six resources to add, zero to change, zero to destroy
+   => no deployed resource remains in state
+
+c) The former public endpoint no longer serves SSH
+
+   TCP connect 132.145.249.219:22, 8s timeout
+   -> "TCP 22 TIMEOUT (host gone)" (connection timeout, not a refusal from a
+      live host)
+
+d) Read-only OCI inventory (`scripts/oci-live/ociLive.ts discover`)
+
+   region: eu-frankfurt-1 | identity: ACTIVE | user readback matches: true
+   instances[root compartment]: 1
+     cloudguard-bastion-dev-vm | VM.Standard.A1.Flex | TERMINATED
+   vcns[root compartment]: 0
+   instances[cloudguard compartment]: 0
+   vcns[cloudguard compartment]: 0
+   arm64 Ubuntu images: 10 (unchanged platform images, not project resources)
+
+   The single reported instance is the terminated record retained by OCI after
+   deletion; it has no running state, no VNIC and no network left behind.
+   Zero project VCNs, subnets, security lists, internet gateways or route
+   tables remain.
+
+4. Local workspace hygiene
+--------------------------
+- No `ssh` or `tofu` process running.
+- No listener on local port 2222 (operator tunnel was already closed).
+- The throwaway container host keys and authorized key generated under
+  gitignored `runtime/` were removed, so no key material from the live test
+  remains on this workstation.
+- Local run logs (`runtime/final-teardown.log`, `final-inventory.log`,
+  `final-state-before-destroy.log`, `stage5-*.log`) are gitignored working
+  evidence; the sanitized narrative in this document is the tracked record.
+- `terraform.tfstate` now holds zero resources and stays gitignored.
+- `git status` is clean; 47 tracked files; no private keys, `.env`, tfvars,
+  state, OCIDs or runtime logs are tracked.
+
+5. What the teardown does not change
+------------------------------------
+- CloudGuard certification stays `PORTABLE_CERTIFIED` with score 100/100
+  (5/5 checks) from the official audit of 2026-11-17. The audit is structural
+  and the live evidence it references is preserved in
+  `docs/stage-5-retry-verification.txt`.
+- The historical Stage 5 capacity/quota blocker (`docs/stage-5-verification.txt`)
+  and Stage 6 teardown (`docs/stage-6-verification.txt`) remain as written.
+- Re-deploying requires only `tofu apply` with an operator CIDR and public key;
+  A1.Flex capacity is not guaranteed and may need a retry in another AD.
+
+OCIDs, IP ownership details and credentials are deliberately omitted from this
+tracked document; the authoritative identifiers exist only in ignored local
+state.

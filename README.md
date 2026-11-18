@@ -4,7 +4,7 @@
 ![OpenSSH](https://img.shields.io/badge/access-public--key%20only-4E9A06)
 ![Docker](https://img.shields.io/badge/Docker-read--only%20%2B%20cap__drop%20ALL-2496ED?logo=docker&logoColor=white)
 ![OpenTofu](https://img.shields.io/badge/IaC-OpenTofu-844FBA?logo=opentofu&logoColor=white)
-![Stage](https://img.shields.io/badge/stage-8%20%C2%B7%20v1.0.0%20release-green)
+![Stage](https://img.shields.io/badge/stage-8%20%C2%B7%20v1.0.1%20certified-green)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A small, hardened SSH jump host for reaching private cloud resources without
@@ -12,13 +12,15 @@ exposing them. Administrators authenticate with a public key, land in an
 audited session, and forward TCP/22 to private hosts; password authentication,
 root login, SFTP, agent forwarding and reverse tunnels are disabled.
 
-**Stage 8 status — v1.0.0 repository release:** the independent Git repository
+**Stage 8 status — v1.0.1 certified release:** the independent Git repository
 is on `main`, the remote is configured, the MIT license is present, and the
-release is tagged `v1.0.0`. The Stage 5 retry on 2026-11-17 successfully created
+release is tagged `v1.0.1`. The Stage 5 retry on 2026-11-17 successfully created
 the OCI host and completed live SSH, audit, jump and port-restriction checks.
 Local Stage 4 verification and the Stage 6 teardown of the earlier attempt
 remain valid. The official CloudGuard audit passed **5/5** and recorded
-**`PORTABLE_CERTIFIED` — 100/100** on 2026-11-17.
+**`PORTABLE_CERTIFIED` — 100/100** on 2026-11-17. The verified host was torn
+down on 2026-11-18; the certification rests on the recorded live evidence, not
+on a running deployment.
 
 ---
 
@@ -263,10 +265,19 @@ cloud-init completed and the remote Docker stack became healthy.
 The earlier attempt was blocked in every AD by A1 `500-InternalError` capacity
 errors and E2 `400-LimitExceeded` tenancy limits. No paid shape was substituted.
 The earlier Stage 6 teardown destroyed the first attempt's five network
-resources; the retry created a fresh stack and remains live. See
+resources; the retry created a fresh stack, which was itself retired after
+certification. See
 [`docs/stage-5-retry-verification.txt`](docs/stage-5-retry-verification.txt),
 [`docs/stage-5-verification.txt`](docs/stage-5-verification.txt) and
 [`docs/stage-6-verification.txt`](docs/stage-6-verification.txt).
+
+**Final teardown — 2026-11-18:** the certified stack was destroyed to stop idle
+spend and avoid drift before Project 09. `tofu destroy` removed all six
+resources; `tofu state list` is empty, the former public IP no longer accepts
+TCP/22, and a read-only OCI inventory reports the instance `TERMINATED` with
+zero VCNs and zero active instances in the compartment. All verification logs
+are preserved. See
+[`docs/stage-8-teardown-verification.txt`](docs/stage-8-teardown-verification.txt).
 
 ---
 
@@ -430,7 +441,7 @@ allowance in the provider calculator before budgeting.
 | 5 | Live OCI deployment | ✅ complete — retry 2026-11-17 | `docs/stage-5-retry-verification.txt` |
 | 6 | Earlier-attempt teardown and zero-resource verification | ✅ complete | `docs/stage-6-verification.txt` |
 | 7 | Security audit, README and cost model | ✅ complete | `docs/stage-7-verification.txt` |
-| 8 | Git finalization, MIT license, release commit, push and `v1.0.0` | ✅ released + certified | origin/`main`, tag, vault 5/5 |
+| 8 | Git finalization, MIT license, release, certification, final teardown | ✅ released + certified | origin/`main`, `v1.0.1`, vault 5/5 |
 
 Local Stage 4 results: valid key login succeeded; missing, invalid and root
 attempts returned SSH exit `255`; a disposable target was reached through an
@@ -446,19 +457,22 @@ written only by the CloudGuard portability audit, not by this document.
 
 ---
 
-## Release v1.0.0
+## Release v1.0.1
 
 | Item | Value |
 | --- | --- |
 | Repository | <https://github.com/kaveh8866/Bastion-Host-Jump-Server> |
 | Branch | `main` |
 | License | MIT — Copyright (c) 2026 Mostafa Kaveh |
-| Tag | `v1.0.0` |
+| Tag | `v1.0.1` (certified release) |
+| Earlier tag | `v1.0.0` (initial release, left in place) |
 | Certification | **`PORTABLE_CERTIFIED` — 100/100 (5/5 checks), audited 2026-11-17** |
 
 The tag is a code/documentation release. Live host evidence is recorded in
-`docs/stage-5-retry-verification.txt`; the persisted CloudGuard audit is the
-authoritative certification record.
+`docs/stage-5-retry-verification.txt`, the final teardown in
+`docs/stage-8-teardown-verification.txt`, and the persisted CloudGuard audit is
+the authoritative certification record. `v1.0.0` stays immutable at the initial
+release commit; `v1.0.1` marks the certified, post-teardown state.
 
 ### CloudGuard portability audit
 
@@ -478,10 +492,12 @@ Score: **100/100** · Status: **`PORTABLE_CERTIFIED`** · Audited: 2026-11-17
 
 ## Honest limits
 
-- The live OCI host now exists at `132.145.249.219`; it was reached through the
-  operator tunnel and its security list exposes only TCP/22 from the operator
-  `/32`. A packet-level test from a second, unauthorized public egress was not
-  possible from this workstation and remains unverified.
+- The live OCI host at `132.145.249.219` was reached through the operator
+  tunnel and its security list exposed only TCP/22 from the operator `/32`. A
+  packet-level test from a second, unauthorized public egress was not possible
+  from this workstation and remains unverified. The host was destroyed on
+  2026-11-18, so that external-source check can only be repeated on a new
+  deployment.
 - The local CIDR checks validate Terraform/whitelist policy; the live security
   list configuration was refreshed with no drift. Packet-level source-CIDR
   enforcement from an untrusted address still requires a second network.
